@@ -31,7 +31,6 @@ import {
   Tags,
   Trash2,
   UserCheck,
-  LogOut,
   UserRoundPlus,
   UsersRound,
   Workflow,
@@ -238,14 +237,19 @@ const quickReplyOptions = [
   "Tenemos disponibilidad esta semana. Que horario te queda mejor?",
   "Te puedo enviar precios y opciones por este medio.",
 ];
+const defaultClientUser: SessionUser = {
+  id: "user_admin",
+  email: "admin@jpsistems.local",
+  name: "JP Admin",
+  role: "SUPER_ADMIN",
+  workspaceIds: [],
+};
 
 export default function Home() {
   const [activeView, setActiveView] = useState<View>("inbox");
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
-  const [user, setUser] = useState<SessionUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [loginForm, setLoginForm] = useState({ email: "admin@jpsistems.local", password: "admin" });
-  const [authError, setAuthError] = useState("");
+  const [user, setUser] = useState<SessionUser | null>(defaultClientUser);
+  const [authLoading, setAuthLoading] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -315,7 +319,7 @@ export default function Home() {
         }
       } catch {
         if (!cancelled) {
-          setUser(null);
+          setUser(defaultClientUser);
         }
       } finally {
         if (!cancelled) {
@@ -726,69 +730,12 @@ export default function Home() {
     showToast(nextActive ? "Automatizacion activada." : "Automatizacion pausada.");
   }
 
-  async function login() {
-    setAuthError("");
-
-    try {
-      const result = await postJson<{ user: SessionUser }>("/api/auth/login", loginForm);
-      setUser(result.user);
-    } catch {
-      setAuthError("Correo o password incorrecto.");
-    }
-  }
-
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setUser(null);
-    setWorkspaces([]);
-    setConversations([]);
-    setSelectedWorkspaceId("");
-  }
-
   if (authLoading) {
     return <main className="loadingScreen">Validando sesion...</main>;
   }
 
   if (!user) {
-    return (
-      <main className="loginShell" data-theme={themeMode}>
-        <section className="loginPanel" aria-label="Iniciar sesion">
-          <div className="brandBlock loginBrand">
-            <div className="brandMark">JP</div>
-            <div>
-              <strong>JP Sistems CRM</strong>
-              <span>Acceso operativo</span>
-            </div>
-          </div>
-          <ThemeSwitch themeMode={themeMode} onThemeChange={chooseTheme} />
-          <div>
-            <p className="eyebrow">Sesion segura</p>
-            <h1>Iniciar sesion</h1>
-          </div>
-          <label>
-            Correo
-            <input
-              value={loginForm.email}
-              onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
-              autoComplete="email"
-            />
-          </label>
-          <label>
-            Password
-            <input
-              value={loginForm.password}
-              onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
-              type="password"
-              autoComplete="current-password"
-            />
-          </label>
-          {authError && <div className="alertBanner">{authError}</div>}
-          <button className="primaryButton" onClick={login}>
-            Entrar al CRM
-          </button>
-        </section>
-      </main>
-    );
+    return <main className="loadingScreen">Entrando al CRM...</main>;
   }
 
   if (loading) {
@@ -875,9 +822,6 @@ export default function Home() {
             >
               <span>{initials(user.name)}</span>
               {user.role}
-            </button>
-            <button className="iconButton" onClick={logout} aria-label="Cerrar sesion">
-              <LogOut size={18} />
             </button>
             <button className="primaryButton" onClick={openNewLeadModal}>
               <UserRoundPlus size={18} />

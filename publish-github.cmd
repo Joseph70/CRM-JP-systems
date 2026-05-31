@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "REPO_NAME=CRM-JP-sistems"
+set "REPO_NAME=CRM-JP-systems"
 set "DEFAULT_OWNER=Joseph70"
 set "GIT_EXE=C:\Program Files\Git\cmd\git.exe"
 set "GH_EXE=C:\Program Files\GitHub CLI\gh.exe"
