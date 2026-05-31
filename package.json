@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\next\\dist\\bin\\next dev",
-    "build": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\next\\dist\\bin\\next build",
-    "start": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\next\\dist\\bin\\next start",
-    "lint": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\next\\dist\\bin\\next lint",
-    "db:generate": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\prisma\\build\\index.js generate",
-    "db:migrate": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\prisma\\build\\index.js migrate deploy",
-    "db:migrate:dev": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\prisma\\build\\index.js migrate dev",
-    "db:studio": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\prisma\\build\\index.js studio"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
