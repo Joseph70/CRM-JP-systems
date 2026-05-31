@@ -1,0 +1,1 @@
+-- Compatibility no-op migration retained for local history.

@@ -1,0 +1,31 @@
+{
+  "name": "crm-base-jp-sistems",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\next\\dist\\bin\\next dev",
+    "build": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\next\\dist\\bin\\next build",
+    "start": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\next\\dist\\bin\\next start",
+    "lint": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\next\\dist\\bin\\next lint",
+    "db:generate": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\prisma\\build\\index.js generate",
+    "db:migrate": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\prisma\\build\\index.js migrate deploy",
+    "db:migrate:dev": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\prisma\\build\\index.js migrate dev",
+    "db:studio": "C:\\Progra~1\\nodejs\\node.exe .\\node_modules\\prisma\\build\\index.js studio"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "next": "^14.2.5",
+    "@prisma/client": "^5.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.5",
+    "prisma": "^5.22.0",
+    "typescript": "^5.5.3"
+  }
+}

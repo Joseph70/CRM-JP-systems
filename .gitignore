@@ -1,0 +1,15 @@
+.next/
+node_modules/
+.tools/
+.gh/
+.repo-git/
+repo-git/
+repo-data/
+out/
+dist/
+.env*
+!/.env.example
+*.log
+*.db
+*.db-journal
+data/*.json
