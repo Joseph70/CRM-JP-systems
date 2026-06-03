@@ -1,20 +1,17 @@
 "use client";
 
 import {
-  Bell,
   Building2,
   CalendarClock,
   Check,
   CheckCircle2,
   ChevronDown,
   CircleDollarSign,
-  Clock3,
   Edit3,
   Eye,
   Filter,
   GripVertical,
   Inbox,
-  Instagram,
   LayoutDashboard,
   Megaphone,
   MessageCircle,
@@ -25,7 +22,6 @@ import {
   Search,
   Send,
   Settings,
-  ShieldCheck,
   Sparkles,
   Sun,
   Tags,
@@ -909,12 +905,6 @@ export default function Home() {
             );
           })}
         </nav>
-
-        <div className="sidebarCard">
-          <ShieldCheck size={18} />
-          <strong>SLA activo</strong>
-          <span>Responder leads calientes antes de {selectedWorkspace.responseSlaMinutes} min.</span>
-        </div>
       </aside>
 
       <section className="workspace">
@@ -948,18 +938,6 @@ export default function Home() {
 
           <div className="topActions">
             <ThemeSwitch themeMode={themeMode} onThemeChange={chooseTheme} />
-            <button className="iconButton" aria-label="Notificaciones" onClick={() => showToast("No hay notificaciones nuevas.")}>
-              <Bell size={18} />
-            </button>
-            <button
-              className="userSession"
-              aria-label={`Sesion de ${user.name}`}
-              title={user.email}
-              onClick={() => showToast(`${user.name} - ${user.email}`)}
-            >
-              <span>{initials(user.name)}</span>
-              {user.role}
-            </button>
             <button className="primaryButton" onClick={openNewLeadModal}>
               <UserRoundPlus size={18} />
               Nuevo lead
@@ -982,11 +960,6 @@ export default function Home() {
               {selectedWorkspace.industry} - {selectedWorkspace.phone} - Responsable:{" "}
               {selectedWorkspace.owner}
             </p>
-          </div>
-          <div className="statusGrid">
-            <StatusMetric label="Salud CRM" value={`${selectedWorkspace.health}%`} />
-            <StatusMetric label="Meta" value={statusLabel(selectedWorkspace.metaStatus)} />
-            <StatusMetric label="WhatsApp" value={statusLabel(selectedWorkspace.whatsappStatus)} />
           </div>
         </section>
 
@@ -1149,9 +1122,7 @@ export default function Home() {
 
             <aside className="panel opsPanel" aria-label="Operacion del cliente">
               <QuickActions
-                campaigns={campaigns}
                 pipelineStages={activePipelineStages}
-                slaMinutes={selectedWorkspace.responseSlaMinutes}
                 stageFilter={stageFilter}
                 sourceFilter={sourceFilter}
                 ownerFilter={ownerFilter}
@@ -1536,21 +1507,11 @@ async function patchJson<T>(url: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function StatusMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="statusMetric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <article className="metricCard">
       <span>{label}</span>
       <strong>{value}</strong>
-      <p>{detail}</p>
     </article>
   );
 }
@@ -1600,9 +1561,7 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
 }
 
 function QuickActions({
-  campaigns,
   pipelineStages,
-  slaMinutes,
   stageFilter,
   sourceFilter,
   ownerFilter,
@@ -1613,9 +1572,7 @@ function QuickActions({
   onCreateTask,
   onCreateDeal,
 }: {
-  campaigns: CampaignSource[];
   pipelineStages: PipelineStageConfig[];
-  slaMinutes: number;
   stageFilter: "all" | Conversation["stage"];
   sourceFilter: "all" | Conversation["source"];
   ownerFilter: string;
@@ -1691,34 +1648,6 @@ function QuickActions({
         </div>
       </section>
 
-      <section>
-        <div className="compactHeading">
-          <h2>Fuentes activas</h2>
-          <Instagram size={18} />
-        </div>
-        <div className="sourceList">
-          {campaigns.slice(0, 3).map((source) => (
-            <div className="sourceRow" key={source.id}>
-              <div>
-                <strong>{source.name}</strong>
-                <span>{source.leads} leads</span>
-              </div>
-              <div>
-                <span>CPL {money(source.costPerLead)}</span>
-                <strong>{source.conversionRate}%</strong>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="slaBox">
-        <Clock3 size={18} />
-        <div>
-          <strong>SLA comercial</strong>
-          <span>Meta activa: responder en menos de {slaMinutes} minutos.</span>
-        </div>
-      </section>
     </>
   );
 }
@@ -2232,16 +2161,6 @@ function IntegrationsView({
             </button>
           </article>
         ))}
-      </div>
-      <div className="apiPanel">
-        <LayoutDashboard size={20} />
-        <div>
-          <strong>Endpoints activos</strong>
-          <span>
-            /api/webhooks/whatsapp, /api/webhooks/meta-leads, /api/crm/customers,
-            /api/crm/conversations, /api/crm/deals
-          </span>
-        </div>
       </div>
     </section>
   );
