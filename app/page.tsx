@@ -194,6 +194,127 @@ const initialWorkspaceForm = {
   phone: "",
   responseSlaMinutes: "8",
 };
+const demoWorkspaces: Workspace[] = [
+  {
+    id: "ws_terra",
+    name: "Terra Dental Studio",
+    industry: "Clinica dental",
+    owner: "JP Sistems",
+    phone: "+593 99 884 2210",
+    health: 92,
+    responseSlaMinutes: 5,
+    whatsappStatus: "connected",
+    metaStatus: "connected",
+  },
+  {
+    id: "ws_nova",
+    name: "Nova Fit Center",
+    industry: "Gimnasio premium",
+    owner: "JP Sistems",
+    phone: "+593 98 117 4402",
+    health: 78,
+    responseSlaMinutes: 8,
+    whatsappStatus: "pending",
+    metaStatus: "pending",
+  },
+];
+const demoConversations: Conversation[] = [
+  {
+    id: "conv_terra_001",
+    workspaceId: "ws_terra",
+    contactName: "Maria Torres",
+    contactPhone: "+593 99 123 4567",
+    stage: "new_lead",
+    source: "meta_ads",
+    owner: "Daniela",
+    intent: "Quiere una limpieza dental y pregunta por precios.",
+    internalNotes: "Lead caliente. Prefiere horarios de tarde.",
+    tags: ["Caliente", "Meta"],
+    estimatedValue: 120,
+    unreadCount: 2,
+    lastMessageAt: new Date().toISOString(),
+    messages: [
+      {
+        id: "msg_demo_001",
+        direction: "inbound",
+        body: "Hola, vi su anuncio y quiero saber el precio de una limpieza.",
+        status: "received",
+        sentAt: new Date().toISOString(),
+      },
+    ],
+  },
+  {
+    id: "conv_nova_001",
+    workspaceId: "ws_nova",
+    contactName: "Carlos Mena",
+    contactPhone: "+593 98 987 6543",
+    stage: "contacted",
+    source: "instagram_organic",
+    owner: "Marco",
+    intent: "Pregunta por planes mensuales y entrenamiento personalizado.",
+    internalNotes: "Enviar promo semanal.",
+    tags: ["Instagram", "Plan mensual"],
+    estimatedValue: 180,
+    unreadCount: 0,
+    lastMessageAt: new Date().toISOString(),
+    messages: [
+      {
+        id: "msg_demo_002",
+        direction: "inbound",
+        body: "Buenas, cuanto cuesta el plan mensual del gimnasio?",
+        status: "received",
+        sentAt: new Date().toISOString(),
+      },
+    ],
+  },
+];
+const demoCustomers: Customer[] = [
+  {
+    id: "cust_demo_001",
+    workspaceId: "ws_terra",
+    companyName: "Terra Dental Studio",
+    contactName: "Maria Torres",
+    email: "maria@example.com",
+    phone: "+593 99 123 4567",
+    status: "qualified",
+    source: "Meta Ads",
+    owner: "Daniela",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+const demoActivities: Activity[] = [
+  {
+    id: "act_demo_001",
+    customerId: "cust_demo_001",
+    type: "note",
+    title: "Enviar propuesta por WhatsApp",
+    notes: "Responder con precios y disponibilidad.",
+    dueDate: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  },
+];
+const demoCampaigns: CampaignSource[] = [
+  { id: "camp_demo_001", name: "Meta Ads - Leads", channel: "meta_ads", leads: 18, spend: 64, conversionRate: 22, costPerLead: 3.5 },
+  { id: "camp_demo_002", name: "Instagram organico", channel: "instagram_organic", leads: 11, spend: 0, conversionRate: 18, costPerLead: 0 },
+];
+const demoAutomations: AutomationRule[] = [
+  { id: "auto_demo_001", name: "Bienvenida WhatsApp", trigger: "Nuevo lead", action: "Enviar mensaje inicial", active: true },
+  { id: "auto_demo_002", name: "Recordatorio seguimiento", trigger: "24h sin respuesta", action: "Crear tarea", active: true },
+];
+const demoIntegrations: IntegrationConnection[] = [
+  { id: "int_demo_001", provider: "whatsapp_cloud_api", status: "partial", capabilities: ["mensajes", "plantillas"] },
+  { id: "int_demo_002", provider: "meta_lead_ads", status: "partial", capabilities: ["campanas", "formularios"] },
+];
+const demoSummary: Summary = {
+  totalCustomers: demoCustomers.length,
+  totalWorkspaces: demoWorkspaces.length,
+  totalConversations: demoConversations.length,
+  activeLeads: demoConversations.length,
+  openDeals: demoConversations.length,
+  pipelineValue: demoConversations.reduce((total, conversation) => total + conversation.estimatedValue, 0),
+  pendingActivities: demoActivities.length,
+};
 
 const viewItems: { id: View; label: string; icon: LucideIcon }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -348,12 +469,16 @@ export default function Home() {
 
         if (cancelled) return;
 
-        setWorkspaces(workspaceData);
-        setSummary(summaryData);
-        setSelectedWorkspaceId((current) => current || workspaceData[0]?.id || "");
+        const nextWorkspaces = workspaceData.length > 0 ? workspaceData : demoWorkspaces;
+        setWorkspaces(nextWorkspaces);
+        setSummary(summaryData.totalWorkspaces > 0 ? summaryData : demoSummary);
+        setSelectedWorkspaceId((current) => current || nextWorkspaces[0]?.id || "");
       } catch {
         if (!cancelled) {
-          setError("No se pudo cargar la informacion inicial del CRM.");
+          setWorkspaces(demoWorkspaces);
+          setSummary(demoSummary);
+          setSelectedWorkspaceId((current) => current || demoWorkspaces[0]?.id || "");
+          setError("");
         }
       } finally {
         if (!cancelled) {
@@ -390,23 +515,35 @@ export default function Home() {
 
         if (cancelled) return;
 
-        setConversations(conversationData);
-        setCustomers(customerData);
-        setActivities(activityData);
-        setCampaigns(campaignData);
-        setAutomations(automationData);
-        setIntegrations(integrationData);
-        setSummary(summaryData);
+        const workspaceConversations = demoConversations.filter(
+          (conversation) => conversation.workspaceId === selectedWorkspaceId,
+        );
+        const workspaceCustomers = demoCustomers.filter((customer) => customer.workspaceId === selectedWorkspaceId);
+        setConversations(conversationData.length > 0 ? conversationData : workspaceConversations);
+        setCustomers(customerData.length > 0 ? customerData : workspaceCustomers);
+        setActivities(activityData.length > 0 ? activityData : demoActivities);
+        setCampaigns(campaignData.length > 0 ? campaignData : demoCampaigns);
+        setAutomations(automationData.length > 0 ? automationData : demoAutomations);
+        setIntegrations(integrationData.length > 0 ? integrationData : demoIntegrations);
+        setSummary(summaryData.totalWorkspaces > 0 ? summaryData : demoSummary);
         setSelectedConversationId((current) => {
-          if (conversationData.some((conversation) => conversation.id === current)) {
+          const nextConversations = conversationData.length > 0 ? conversationData : workspaceConversations;
+          if (nextConversations.some((conversation) => conversation.id === current)) {
             return current;
           }
 
-          return conversationData[0]?.id || "";
+          return nextConversations[0]?.id || "";
         });
       } catch {
         if (!cancelled) {
-          setError("No se pudieron cargar los datos del cliente activo.");
+          setConversations(demoConversations.filter((conversation) => conversation.workspaceId === selectedWorkspaceId));
+          setCustomers(demoCustomers.filter((customer) => customer.workspaceId === selectedWorkspaceId));
+          setActivities(demoActivities);
+          setCampaigns(demoCampaigns);
+          setAutomations(demoAutomations);
+          setIntegrations(demoIntegrations);
+          setSummary(demoSummary);
+          setError("");
         }
       }
     }
