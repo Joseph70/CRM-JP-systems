@@ -1,26 +1,26 @@
 "use client";
 
 import {
-  Building2,
   Bot,
+  Building2,
   CalendarClock,
   Check,
   CheckCircle2,
   ChevronDown,
   CircleDollarSign,
+  Copy,
   Edit3,
-  Eye,
   Filter,
-  GripVertical,
   Inbox,
   LayoutDashboard,
   Megaphone,
   MessageCircle,
-  MoreHorizontal,
   Moon,
+  MoreHorizontal,
   PhoneCall,
   PlugZap,
   Plus,
+  Save,
   Search,
   Send,
   Settings,
@@ -28,7 +28,6 @@ import {
   Sun,
   Tags,
   Trash2,
-  UserCheck,
   UserRoundPlus,
   UsersRound,
   Workflow,
@@ -36,26 +35,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
-import {
-  applyLeadFormToConversation,
-  buildConversationPayload,
-  buildFallbackActivity,
-  buildFallbackConversation,
-  buildFallbackWorkspace,
-  buildOutboundMessage,
-  buildTaskPayload,
-  buildWorkspacePayload,
-  completeActivity,
-  filterConversations,
-  getDashboardStats,
-  getPipelineValue,
-  getResponseAverage,
-  mergeConversationMessage,
-  persistTheme,
-  readSavedTheme,
-  resolveNextConversationId,
-  toggleAutomationState,
-} from "@/src/client/crm-logic";
 
 type View =
   | "dashboard"
@@ -70,12 +49,14 @@ type View =
   | "settings";
 
 type ThemeMode = "light" | "dark";
-type PipelineStageConfig = { id: Conversation["stage"]; label: string; color: string };
+type Stage = "new_lead" | "contacted" | "follow_up" | "appointment_scheduled" | "won" | "lost";
+type Source = "meta_ads" | "instagram_organic" | "facebook_organic" | "web_form" | "manual";
+type Priority = "hot" | "warm" | "cold";
 
 type WorkspaceTheme = {
   primary: string;
   accent: string;
-  highlight: string;
+  soft: string;
 };
 
 type Workspace = {
@@ -84,1773 +65,820 @@ type Workspace = {
   industry: string;
   owner: string;
   phone: string;
-  health: number;
   responseSlaMinutes: number;
   whatsappStatus: "connected" | "pending" | "disconnected";
-  metaStatus: "connected" | "pending" | "disconnected";
+  metaStatus: "connected" | "partial" | "pending" | "disconnected";
+  theme: WorkspaceTheme;
+  stageLabels: Record<Stage, string>;
 };
 
 type Message = {
   id: string;
-  direction: "inbound" | "outbound";
+  direction: "inbound" | "outbound" | "system";
   body: string;
   status: string;
   sentAt: string;
 };
 
-type Conversation = {
+type Lead = {
   id: string;
   workspaceId: string;
   contactName: string;
-  contactPhone: string;
-  stage: "new_lead" | "contacted" | "follow_up" | "appointment_scheduled" | "won" | "lost";
-  source: "meta_ads" | "instagram_organic" | "facebook_organic" | "web_form" | "manual";
+  whatsappName: string;
+  phone: string;
+  source: Source;
+  stage: Stage;
+  priority: Priority;
   owner: string;
-  intent: string;
-  internalNotes?: string;
-  tags?: string[];
-  estimatedValue: number;
+  service: string;
+  location: string;
+  desiredStartDate: string;
+  desiredEndDate: string;
+  budget: number;
+  tags: string[];
+  notes: string;
   unreadCount: number;
   lastMessageAt: string;
   messages: Message[];
 };
 
-type CampaignSource = {
+type Task = {
   id: string;
+  workspaceId: string;
+  leadId?: string;
+  title: string;
+  dueDate: string;
+  type: "follow_up" | "call" | "appointment" | "document";
+  completed: boolean;
+};
+
+type Campaign = {
+  id: string;
+  workspaceId: string;
   name: string;
-  channel: Conversation["source"];
+  source: Source;
   leads: number;
   spend: number;
-  conversionRate: number;
-  costPerLead: number;
+  conversion: number;
 };
 
-type Customer = {
+type Automation = {
   id: string;
-  workspaceId?: string;
-  companyName: string;
-  contactName: string;
-  email: string;
-  phone: string;
-  status: "new" | "contacted" | "qualified" | "proposal" | "won" | "lost";
-  source: string;
-  owner: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type Activity = {
-  id: string;
-  customerId: string;
-  type: "call" | "email" | "meeting" | "note";
-  title: string;
-  notes?: string;
-  dueDate?: string;
-  completedAt?: string;
-  createdAt: string;
-};
-
-type AutomationRule = {
-  id: string;
+  workspaceId: string;
   name: string;
   trigger: string;
   action: string;
   active: boolean;
 };
 
-type BotConfig = {
-  enabled: boolean;
-  mode: "asistente" | "ventas" | "calificacion";
-  objective: string;
-  welcomeMessage: string;
-  qualificationQuestions: string[];
-  handoffKeywords: string;
-  templateName: string;
-};
-
-type FollowUpRule = {
+type Integration = {
   id: string;
+  workspaceId: string;
   name: string;
-  delayHours: number;
-  stage: Conversation["stage"] | "any";
-  message: string;
-  active: boolean;
+  status: "ready" | "partial" | "pending";
+  description: string;
 };
 
-type IntegrationConnection = {
-  id: string;
-  provider: "whatsapp_cloud_api" | "meta_lead_ads" | "instagram_graph" | "google_calendar";
-  status: "ready" | "partial" | "pending" | "error";
-  capabilities: string[];
+type LeadForm = {
+  contactName: string;
+  whatsappName: string;
+  phone: string;
+  source: Source;
+  service: string;
+  location: string;
+  desiredStartDate: string;
+  desiredEndDate: string;
+  budget: string;
+  notes: string;
+  priority: Priority;
+  owner: string;
 };
 
-type Summary = {
-  totalCustomers: number;
-  totalWorkspaces: number;
-  totalConversations: number;
-  activeLeads: number;
-  openDeals: number;
-  pipelineValue: number;
-  pendingActivities: number;
+const defaultStageLabels: Record<Stage, string> = {
+  new_lead: "Nuevo lead",
+  contacted: "Contactado",
+  follow_up: "Seguimiento",
+  appointment_scheduled: "Cita agendada",
+  won: "Ganado",
+  lost: "Perdido",
 };
 
-type SessionUser = {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  workspaceIds: string[];
+const stageOrder: Stage[] = ["new_lead", "contacted", "follow_up", "appointment_scheduled", "won", "lost"];
+
+const sourceLabels: Record<Source, string> = {
+  meta_ads: "Meta Ads",
+  instagram_organic: "Instagram",
+  facebook_organic: "Facebook",
+  web_form: "Formulario",
+  manual: "Manual",
 };
 
-const initialLeadForm = {
-  name: "",
+const sourceOptions: Source[] = ["meta_ads", "instagram_organic", "facebook_organic", "web_form", "manual"];
+const owners = ["JP Admin", "Asesor ventas", "Operador WhatsApp", "Cliente visualizador"];
+
+const emptyLeadForm: LeadForm = {
+  contactName: "",
+  whatsappName: "",
   phone: "",
-  source: "meta_ads" as Conversation["source"],
-  intent: "",
-  value: "0",
+  source: "meta_ads",
+  service: "",
+  location: "",
+  desiredStartDate: "",
+  desiredEndDate: "",
+  budget: "0",
+  notes: "",
+  priority: "warm",
+  owner: "JP Admin",
 };
 
-const initialWorkspaceForm = {
-  name: "",
-  industry: "",
-  owner: "JP Sistems",
-  phone: "",
-  responseSlaMinutes: "8",
-};
-const demoWorkspaces: Workspace[] = [
+const initialWorkspaces: Workspace[] = [
   {
-    id: "ws_terra",
-    name: "Terra Dental Studio",
-    industry: "Clinica dental",
+    id: "terra-travel",
+    name: "Terra Travel Studio",
+    industry: "Viajes, vuelos y visas",
     owner: "JP Sistems",
     phone: "+593 99 884 2210",
-    health: 92,
-    responseSlaMinutes: 5,
+    responseSlaMinutes: 6,
     whatsappStatus: "connected",
     metaStatus: "connected",
+    theme: { primary: "#8b102c", accent: "#e11d48", soft: "#fff1f4" },
+    stageLabels: { ...defaultStageLabels },
   },
   {
-    id: "ws_nova",
+    id: "nova-fit",
     name: "Nova Fit Center",
     industry: "Gimnasio premium",
     owner: "JP Sistems",
     phone: "+593 98 117 4402",
-    health: 78,
     responseSlaMinutes: 8,
     whatsappStatus: "pending",
-    metaStatus: "pending",
+    metaStatus: "partial",
+    theme: { primary: "#991b1b", accent: "#ef4444", soft: "#fff1f2" },
+    stageLabels: { ...defaultStageLabels, appointment_scheduled: "Clase agendada" },
   },
 ];
-const demoConversations: Conversation[] = [
-  {
-    id: "conv_terra_001",
-    workspaceId: "ws_terra",
-    contactName: "Maria Torres",
-    contactPhone: "+593 99 123 4567",
-    stage: "new_lead",
-    source: "meta_ads",
-    owner: "Daniela",
-    intent: "Quiere una limpieza dental y pregunta por precios.",
-    internalNotes: "Lead caliente. Prefiere horarios de tarde.",
-    tags: ["Caliente", "Meta"],
-    estimatedValue: 120,
-    unreadCount: 2,
-    lastMessageAt: new Date().toISOString(),
-    messages: [
-      {
-        id: "msg_demo_001",
-        direction: "inbound",
-        body: "Hola, vi su anuncio y quiero saber el precio de una limpieza.",
-        status: "received",
-        sentAt: new Date().toISOString(),
-      },
-    ],
-  },
-  {
-    id: "conv_nova_001",
-    workspaceId: "ws_nova",
-    contactName: "Carlos Mena",
-    contactPhone: "+593 98 987 6543",
-    stage: "contacted",
-    source: "instagram_organic",
-    owner: "Marco",
-    intent: "Pregunta por planes mensuales y entrenamiento personalizado.",
-    internalNotes: "Enviar promo semanal.",
-    tags: ["Instagram", "Plan mensual"],
-    estimatedValue: 180,
-    unreadCount: 0,
-    lastMessageAt: new Date().toISOString(),
-    messages: [
-      {
-        id: "msg_demo_002",
-        direction: "inbound",
-        body: "Buenas, cuanto cuesta el plan mensual del gimnasio?",
-        status: "received",
-        sentAt: new Date().toISOString(),
-      },
-    ],
-  },
-];
-const demoCustomers: Customer[] = [
-  {
-    id: "cust_demo_001",
-    workspaceId: "ws_terra",
-    companyName: "Terra Dental Studio",
-    contactName: "Maria Torres",
-    email: "maria@example.com",
-    phone: "+593 99 123 4567",
-    status: "qualified",
-    source: "Meta Ads",
-    owner: "Daniela",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-const demoActivities: Activity[] = [
-  {
-    id: "act_demo_001",
-    customerId: "cust_demo_001",
-    type: "note",
-    title: "Enviar propuesta por WhatsApp",
-    notes: "Responder con precios y disponibilidad.",
-    dueDate: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-  },
-];
-const demoCampaigns: CampaignSource[] = [
-  { id: "camp_demo_001", name: "Meta Ads - Leads", channel: "meta_ads", leads: 18, spend: 64, conversionRate: 22, costPerLead: 3.5 },
-  { id: "camp_demo_002", name: "Instagram organico", channel: "instagram_organic", leads: 11, spend: 0, conversionRate: 18, costPerLead: 0 },
-];
-const demoAutomations: AutomationRule[] = [
-  { id: "auto_demo_001", name: "Bienvenida WhatsApp", trigger: "Nuevo lead", action: "Enviar mensaje inicial", active: true },
-  { id: "auto_demo_002", name: "Recordatorio seguimiento", trigger: "24h sin respuesta", action: "Crear tarea", active: true },
-];
-const defaultBotConfig: BotConfig = {
-  enabled: true,
-  mode: "ventas",
-  objective: "Calificar el lead, resolver dudas iniciales y pasar a humano cuando pida precio final o cita.",
-  welcomeMessage: "Hola, gracias por escribirnos. Soy el asistente de JP Sistems. Te ayudo a cotizar y agendar rapido.",
-  qualificationQuestions: ["Que servicio necesitas?", "Para cuando lo necesitas?", "En que ciudad estas?"],
-  handoffKeywords: "humano, asesor, cita, precio final, reclamo",
-  templateName: "bienvenida_lead",
-};
-const defaultFollowUpRules: FollowUpRule[] = [
-  {
-    id: "follow_demo_001",
-    name: "Reactivar lead caliente",
-    delayHours: 4,
-    stage: "contacted",
-    message: "Hola, sigo atento por aqui. Te gustaria que te envie disponibilidad o precios?",
-    active: true,
-  },
-  {
-    id: "follow_demo_002",
-    name: "Confirmar cita",
-    delayHours: 20,
-    stage: "appointment_scheduled",
-    message: "Te confirmo tu cita. Si necesitas cambiar la hora, respondeme por este chat.",
-    active: true,
-  },
-];
-const demoIntegrations: IntegrationConnection[] = [
-  { id: "int_demo_001", provider: "whatsapp_cloud_api", status: "partial", capabilities: ["mensajes", "plantillas"] },
-  { id: "int_demo_002", provider: "meta_lead_ads", status: "partial", capabilities: ["campanas", "formularios"] },
-];
-const demoSummary: Summary = {
-  totalCustomers: demoCustomers.length,
-  totalWorkspaces: demoWorkspaces.length,
-  totalConversations: demoConversations.length,
-  activeLeads: demoConversations.length,
-  openDeals: demoConversations.length,
-  pipelineValue: demoConversations.reduce((total, conversation) => total + conversation.estimatedValue, 0),
-  pendingActivities: demoActivities.length,
-};
 
-const viewItems: { id: View; label: string; icon: LucideIcon }[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+const now = new Date();
+
+const initialLeads: Lead[] = [
+  {
+    id: "lead-001",
+    workspaceId: "terra-travel",
+    contactName: "Maria Torres",
+    whatsappName: "Maria T.",
+    phone: "+593 99 123 4567",
+    source: "meta_ads",
+    stage: "new_lead",
+    priority: "hot",
+    owner: "Asesor ventas",
+    service: "Visa Estados Unidos B1/B2",
+    location: "Quito",
+    desiredStartDate: "2026-07-12",
+    desiredEndDate: "2026-08-03",
+    budget: 420,
+    tags: ["Visa", "Urgente", "Meta"],
+    notes: "Tiene entrevista tentativa y necesita checklist de documentos.",
+    unreadCount: 2,
+    lastMessageAt: now.toISOString(),
+    messages: [
+      { id: "msg-001", direction: "inbound", body: "Hola, vi el anuncio para visa americana.", status: "received", sentAt: now.toISOString() },
+      { id: "msg-002", direction: "inbound", body: "Quiero saber requisitos y costo total.", status: "received", sentAt: now.toISOString() },
+    ],
+  },
+  {
+    id: "lead-002",
+    workspaceId: "terra-travel",
+    contactName: "Carlos Vera",
+    whatsappName: "Carlos",
+    phone: "+593 98 778 1122",
+    source: "instagram_organic",
+    stage: "follow_up",
+    priority: "warm",
+    owner: "JP Admin",
+    service: "Vuelo Guayaquil - Madrid",
+    location: "Guayaquil",
+    desiredStartDate: "2026-09-10",
+    desiredEndDate: "2026-10-01",
+    budget: 980,
+    tags: ["Vuelo", "Europa"],
+    notes: "Comparar tarifa flexible y equipaje incluido.",
+    unreadCount: 0,
+    lastMessageAt: new Date(now.getTime() - 1000 * 60 * 45).toISOString(),
+    messages: [
+      { id: "msg-003", direction: "inbound", body: "Busco vuelos a Madrid para septiembre.", status: "received", sentAt: now.toISOString() },
+      { id: "msg-004", direction: "outbound", body: "Te reviso opciones con maleta y cambio flexible.", status: "sent", sentAt: now.toISOString() },
+    ],
+  },
+  {
+    id: "lead-003",
+    workspaceId: "nova-fit",
+    contactName: "Andrea Molina",
+    whatsappName: "Andre",
+    phone: "+593 97 555 8800",
+    source: "meta_ads",
+    stage: "contacted",
+    priority: "hot",
+    owner: "Operador WhatsApp",
+    service: "Plan mensual premium",
+    location: "Cumbaya",
+    desiredStartDate: "2026-06-15",
+    desiredEndDate: "",
+    budget: 180,
+    tags: ["Fitness", "Lead Ads"],
+    notes: "Quiere clase de prueba y planes para pareja.",
+    unreadCount: 1,
+    lastMessageAt: now.toISOString(),
+    messages: [{ id: "msg-005", direction: "inbound", body: "Hola, quiero saber los planes mensuales.", status: "received", sentAt: now.toISOString() }],
+  },
+];
+
+const initialTasks: Task[] = [
+  { id: "task-001", workspaceId: "terra-travel", leadId: "lead-001", title: "Enviar checklist de visa", dueDate: "2026-06-05", type: "document", completed: false },
+  { id: "task-002", workspaceId: "terra-travel", leadId: "lead-002", title: "Cotizar 3 vuelos con maleta", dueDate: "2026-06-04", type: "follow_up", completed: false },
+  { id: "task-003", workspaceId: "nova-fit", leadId: "lead-003", title: "Confirmar clase de prueba", dueDate: "2026-06-06", type: "appointment", completed: false },
+];
+
+const initialCampaigns: Campaign[] = [
+  { id: "camp-001", workspaceId: "terra-travel", name: "Visa USA - Click a WhatsApp", source: "meta_ads", leads: 34, spend: 132, conversion: 28 },
+  { id: "camp-002", workspaceId: "terra-travel", name: "Reels vuelos Europa", source: "instagram_organic", leads: 18, spend: 0, conversion: 17 },
+  { id: "camp-003", workspaceId: "nova-fit", name: "Plan premium Meta", source: "meta_ads", leads: 21, spend: 74, conversion: 22 },
+];
+
+const initialAutomations: Automation[] = [
+  { id: "auto-001", workspaceId: "terra-travel", name: "Salesbot bienvenida", trigger: "Nuevo lead de Meta", action: "Enviar plantilla aprobada y pedir servicio", active: true },
+  { id: "auto-002", workspaceId: "terra-travel", name: "Seguimiento 4 horas", trigger: "Sin respuesta del lead", action: "Mensaje suave + tarea para asesor", active: true },
+  { id: "auto-003", workspaceId: "nova-fit", name: "Clase de prueba", trigger: "Lead contactado", action: "Enviar horarios disponibles", active: true },
+];
+
+const initialIntegrations: Integration[] = [
+  { id: "int-001", workspaceId: "terra-travel", name: "WhatsApp Cloud API", status: "ready", description: "Webhooks, plantillas y envio por numero del cliente." },
+  { id: "int-002", workspaceId: "terra-travel", name: "Meta Lead Ads", status: "ready", description: "Formularios, campanas click-to-message y origen por anuncio." },
+  { id: "int-003", workspaceId: "nova-fit", name: "WhatsApp Cloud API", status: "partial", description: "Pendiente validar numero y plantillas." },
+];
+
+const navItems: { id: View; label: string; icon: LucideIcon }[] = [
+  { id: "dashboard", label: "Resumen", icon: LayoutDashboard },
   { id: "clients", label: "Empresas", icon: Building2 },
   { id: "inbox", label: "Bandeja", icon: Inbox },
   { id: "pipeline", label: "Pipeline", icon: Workflow },
   { id: "contacts", label: "Contactos", icon: UsersRound },
   { id: "tasks", label: "Tareas", icon: CalendarClock },
   { id: "campaigns", label: "Campanas", icon: Megaphone },
-  { id: "automations", label: "Automatizaciones", icon: Sparkles },
+  { id: "automations", label: "Salesbot", icon: Bot },
   { id: "integrations", label: "Integraciones", icon: PlugZap },
   { id: "settings", label: "Configuracion", icon: Settings },
 ];
 
-const sourceOptions: { value: Conversation["source"]; label: string }[] = [
-  { value: "meta_ads", label: "Meta Lead Ads" },
-  { value: "instagram_organic", label: "Instagram organico" },
-  { value: "facebook_organic", label: "Facebook organico" },
-  { value: "web_form", label: "Formulario web" },
-  { value: "manual", label: "Carga manual" },
-];
+const panel = "rounded-lg border border-[var(--line)] bg-[var(--surface)] shadow-calm";
+const input =
+  "h-9 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-soft)] px-3 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--brand-soft)]";
+const textArea =
+  "min-h-20 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-soft)] px-3 py-2 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--brand-soft)]";
 
-const pipelineStages: PipelineStageConfig[] = [
-  { id: "new_lead", label: "Nuevo lead", color: "blue" },
-  { id: "contacted", label: "Contactado", color: "green" },
-  { id: "follow_up", label: "Seguimiento", color: "purple" },
-  { id: "appointment_scheduled", label: "Cita agendada", color: "amber" },
-  { id: "won", label: "Ganado", color: "teal" },
-  { id: "lost", label: "Perdido", color: "gray" },
-];
-
-const defaultPipelineStageLabels = pipelineStages.reduce(
-  (labels, stage) => ({ ...labels, [stage.id]: stage.label }),
-  {} as Record<Conversation["stage"], string>,
-);
-
-const defaultWorkspaceTheme: WorkspaceTheme = {
-  primary: "#8b102c",
-  accent: "#e11d48",
-  highlight: "#fff1f4",
-};
-
-const ownerOptions = ["Sin asignar", "Daniela", "Marco", "JP Admin", "Operador Comercial"];
-
-const quickReplyOptions = [
-  "Hola, gracias por escribirnos. Te ayudo con gusto.",
-  "Tenemos disponibilidad esta semana. Que horario te queda mejor?",
-  "Te puedo enviar precios y opciones por este medio.",
-];
-const defaultClientUser: SessionUser = {
-  id: "user_admin",
-  email: "admin@jpsistems.local",
-  name: "JP Admin",
-  role: "SUPER_ADMIN",
-  workspaceIds: [],
-};
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
 
 export default function Home() {
-  const [activeView, setActiveView] = useState<View>("inbox");
+  const [hydrated, setHydrated] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
-  const [user, setUser] = useState<SessionUser | null>(defaultClientUser);
-  const [authLoading, setAuthLoading] = useState(false);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [campaigns, setCampaigns] = useState<CampaignSource[]>([]);
-  const [automations, setAutomations] = useState<AutomationRule[]>([]);
-  const [botConfig, setBotConfig] = useState<BotConfig>(defaultBotConfig);
-  const [followUpRules, setFollowUpRules] = useState<FollowUpRule[]>(defaultFollowUpRules);
-  const [automationConfigWorkspace, setAutomationConfigWorkspace] = useState("");
-  const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [selectedConversationId, setSelectedConversationId] = useState("");
-  const [messageDraft, setMessageDraft] = useState("");
+  const [activeView, setActiveView] = useState<View>("inbox");
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(initialWorkspaces);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(initialWorkspaces[0].id);
+  const [leads, setLeads] = useState<Lead[]>(initialLeads);
+  const [selectedLeadId, setSelectedLeadId] = useState(initialLeads[0].id);
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
+  const [automations, setAutomations] = useState<Automation[]>(initialAutomations);
+  const [integrations] = useState<Integration[]>(initialIntegrations);
   const [searchTerm, setSearchTerm] = useState("");
-  const [stageFilter, setStageFilter] = useState<"all" | Conversation["stage"]>("all");
-  const [sourceFilter, setSourceFilter] = useState<"all" | Conversation["source"]>("all");
-  const [ownerFilter, setOwnerFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState<Stage | "all">("all");
+  const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
+  const [messageDraft, setMessageDraft] = useState("");
   const [leadModalOpen, setLeadModalOpen] = useState(false);
-  const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
-  const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [noteModalOpen, setNoteModalOpen] = useState(false);
-  const [leadNotes, setLeadNotes] = useState<Record<string, string>>({});
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [leadForm, setLeadForm] = useState<LeadForm>(emptyLeadForm);
+  const [companyForm, setCompanyForm] = useState({
+    name: "",
+    industry: "",
+    owner: "JP Sistems",
+    phone: "",
+    responseSlaMinutes: "8",
+  });
+  const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
-  const [leadForm, setLeadForm] = useState(initialLeadForm);
-  const [workspaceForm, setWorkspaceForm] = useState(initialWorkspaceForm);
-  const [taskForm, setTaskForm] = useState({ title: "", dueDate: "", notes: "" });
-  const [pipelineStageLabels, setPipelineStageLabels] =
-    useState<Record<Conversation["stage"], string>>(defaultPipelineStageLabels);
-  const [pipelineConfigWorkspace, setPipelineConfigWorkspace] = useState("");
-  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(defaultWorkspaceTheme);
-  const [themeConfigWorkspace, setThemeConfigWorkspace] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
-    setThemeMode(readSavedTheme(window.localStorage) as ThemeMode);
+    const saved = window.localStorage.getItem("jp-crm-tailwind-state-v1");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as {
+          themeMode?: ThemeMode;
+          workspaces?: Workspace[];
+          selectedWorkspaceId?: string;
+          leads?: Lead[];
+          selectedLeadId?: string;
+          tasks?: Task[];
+          campaigns?: Campaign[];
+          automations?: Automation[];
+        };
+        if (parsed.themeMode) setThemeMode(parsed.themeMode);
+        if (parsed.workspaces?.length) setWorkspaces(parsed.workspaces);
+        if (parsed.selectedWorkspaceId) setSelectedWorkspaceId(parsed.selectedWorkspaceId);
+        if (parsed.leads?.length) setLeads(parsed.leads);
+        if (parsed.selectedLeadId) setSelectedLeadId(parsed.selectedLeadId);
+        if (parsed.tasks?.length) setTasks(parsed.tasks);
+        if (parsed.campaigns?.length) setCampaigns(parsed.campaigns);
+        if (parsed.automations?.length) setAutomations(parsed.automations);
+      } catch {
+        window.localStorage.removeItem("jp-crm-tailwind-state-v1");
+      }
+    }
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
-    persistTheme({
-      documentElement: document.documentElement,
-      storage: window.localStorage,
-      mode: themeMode,
-    });
-  }, [themeMode]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadSession() {
-      try {
-        const session = await getJson<{ user: SessionUser }>("/api/auth/me");
-
-        if (!cancelled) {
-          setUser(session.user);
-        }
-      } catch {
-        if (!cancelled) {
-          setUser(defaultClientUser);
-        }
-      } finally {
-        if (!cancelled) {
-          setAuthLoading(false);
-        }
-      }
-    }
-
-    loadSession();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-
-    let cancelled = false;
-
-    async function loadWorkspaces() {
-      try {
-        const [workspaceData, summaryData] = await Promise.all([
-          getJson<Workspace[]>("/api/crm/workspaces"),
-          getJson<Summary>("/api/crm/summary"),
-        ]);
-
-        if (cancelled) return;
-
-        const nextWorkspaces = workspaceData.length > 0 ? workspaceData : demoWorkspaces;
-        setWorkspaces(nextWorkspaces);
-        setSummary(summaryData.totalWorkspaces > 0 ? summaryData : demoSummary);
-        setSelectedWorkspaceId((current) => current || nextWorkspaces[0]?.id || "");
-      } catch {
-        if (!cancelled) {
-          setWorkspaces(demoWorkspaces);
-          setSummary(demoSummary);
-          setSelectedWorkspaceId((current) => current || demoWorkspaces[0]?.id || "");
-          setError("");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadWorkspaces();
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId) return;
-
-    setSearchTerm("");
-    setStageFilter("all");
-    setSourceFilter("all");
-    setOwnerFilter("all");
-
-    let cancelled = false;
-
-    async function loadWorkspaceData() {
-      setError("");
-      try {
-        const query = `?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`;
-        const [conversationData, customerData, activityData, campaignData, automationData, integrationData, summaryData] =
-          await Promise.all([
-            getJson<Conversation[]>(`/api/crm/conversations${query}`),
-            getJson<Customer[]>(`/api/crm/customers${query}`),
-            getJson<Activity[]>("/api/crm/activities"),
-            getJson<CampaignSource[]>(`/api/crm/campaign-sources${query}`),
-            getJson<AutomationRule[]>(`/api/crm/automations${query}`),
-            getJson<IntegrationConnection[]>(`/api/crm/integrations${query}`),
-            getJson<Summary>("/api/crm/summary"),
-          ]);
-
-        if (cancelled) return;
-
-        const workspaceConversations = demoConversations.filter(
-          (conversation) => conversation.workspaceId === selectedWorkspaceId,
-        );
-        const workspaceCustomers = demoCustomers.filter((customer) => customer.workspaceId === selectedWorkspaceId);
-        setConversations(conversationData.length > 0 ? conversationData : workspaceConversations);
-        setCustomers(customerData.length > 0 ? customerData : workspaceCustomers);
-        setActivities(activityData.length > 0 ? activityData : demoActivities);
-        setCampaigns(campaignData.length > 0 ? campaignData : demoCampaigns);
-        setAutomations(automationData.length > 0 ? automationData : demoAutomations);
-        setIntegrations(integrationData.length > 0 ? integrationData : demoIntegrations);
-        setSummary(summaryData.totalWorkspaces > 0 ? summaryData : demoSummary);
-        setSelectedConversationId((current) => {
-          const nextConversations = conversationData.length > 0 ? conversationData : workspaceConversations;
-          if (nextConversations.some((conversation) => conversation.id === current)) {
-            return current;
-          }
-
-          return nextConversations[0]?.id || "";
-        });
-      } catch {
-        if (!cancelled) {
-          setConversations(demoConversations.filter((conversation) => conversation.workspaceId === selectedWorkspaceId));
-          setCustomers(demoCustomers.filter((customer) => customer.workspaceId === selectedWorkspaceId));
-          setActivities(demoActivities);
-          setCampaigns(demoCampaigns);
-          setAutomations(demoAutomations);
-          setIntegrations(demoIntegrations);
-          setSummary(demoSummary);
-          setError("");
-        }
-      }
-    }
-
-    loadWorkspaceData();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedWorkspaceId]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId) return;
-
-    try {
-      const savedLabels = window.localStorage.getItem(`jp-crm-pipeline-labels-${selectedWorkspaceId}`);
-      setPipelineStageLabels(savedLabels ? { ...defaultPipelineStageLabels, ...JSON.parse(savedLabels) } : defaultPipelineStageLabels);
-      setPipelineConfigWorkspace(selectedWorkspaceId);
-    } catch {
-      setPipelineStageLabels(defaultPipelineStageLabels);
-      setPipelineConfigWorkspace(selectedWorkspaceId);
-    }
-  }, [selectedWorkspaceId]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId || pipelineConfigWorkspace !== selectedWorkspaceId) return;
-    window.localStorage.setItem(`jp-crm-pipeline-labels-${selectedWorkspaceId}`, JSON.stringify(pipelineStageLabels));
-  }, [pipelineConfigWorkspace, pipelineStageLabels, selectedWorkspaceId]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId) return;
-
-    try {
-      const savedTheme = window.localStorage.getItem(`jp-crm-company-theme-${selectedWorkspaceId}`);
-      setWorkspaceTheme(savedTheme ? { ...defaultWorkspaceTheme, ...JSON.parse(savedTheme) } : defaultWorkspaceTheme);
-      setThemeConfigWorkspace(selectedWorkspaceId);
-    } catch {
-      setWorkspaceTheme(defaultWorkspaceTheme);
-      setThemeConfigWorkspace(selectedWorkspaceId);
-    }
-  }, [selectedWorkspaceId]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId || themeConfigWorkspace !== selectedWorkspaceId) return;
-    window.localStorage.setItem(`jp-crm-company-theme-${selectedWorkspaceId}`, JSON.stringify(workspaceTheme));
-  }, [selectedWorkspaceId, themeConfigWorkspace, workspaceTheme]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId) return;
-
-    try {
-      const savedBot = window.localStorage.getItem(`jp-crm-bot-${selectedWorkspaceId}`);
-      const savedFollowUps = window.localStorage.getItem(`jp-crm-followups-${selectedWorkspaceId}`);
-      setBotConfig(savedBot ? { ...defaultBotConfig, ...JSON.parse(savedBot) } : defaultBotConfig);
-      setFollowUpRules(savedFollowUps ? JSON.parse(savedFollowUps) : defaultFollowUpRules);
-      setAutomationConfigWorkspace(selectedWorkspaceId);
-    } catch {
-      setBotConfig(defaultBotConfig);
-      setFollowUpRules(defaultFollowUpRules);
-      setAutomationConfigWorkspace(selectedWorkspaceId);
-    }
-  }, [selectedWorkspaceId]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId || automationConfigWorkspace !== selectedWorkspaceId) return;
-    window.localStorage.setItem(`jp-crm-bot-${selectedWorkspaceId}`, JSON.stringify(botConfig));
-  }, [automationConfigWorkspace, botConfig, selectedWorkspaceId]);
-
-  useEffect(() => {
-    if (!selectedWorkspaceId || automationConfigWorkspace !== selectedWorkspaceId) return;
-    window.localStorage.setItem(`jp-crm-followups-${selectedWorkspaceId}`, JSON.stringify(followUpRules));
-  }, [automationConfigWorkspace, followUpRules, selectedWorkspaceId]);
+    if (!hydrated) return;
+    window.localStorage.setItem(
+      "jp-crm-tailwind-state-v1",
+      JSON.stringify({ themeMode, workspaces, selectedWorkspaceId, leads, selectedLeadId, tasks, campaigns, automations }),
+    );
+  }, [automations, campaigns, hydrated, leads, selectedLeadId, selectedWorkspaceId, tasks, themeMode, workspaces]);
 
   useEffect(() => {
     if (!toast) return;
-
     const timeout = window.setTimeout(() => setToast(""), 2600);
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  const selectedWorkspace = useMemo(
-    () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? workspaces[0],
+  const workspace = useMemo(
+    () => workspaces.find((item) => item.id === selectedWorkspaceId) ?? workspaces[0],
     [selectedWorkspaceId, workspaces],
   );
 
-  const selectedConversation = useMemo(
-    () =>
-      conversations.find((conversation) => conversation.id === selectedConversationId) ??
-      conversations[0],
-    [conversations, selectedConversationId],
+  const workspaceLeads = useMemo(() => leads.filter((lead) => lead.workspaceId === workspace.id), [leads, workspace.id]);
+  const workspaceTasks = useMemo(() => tasks.filter((task) => task.workspaceId === workspace.id), [tasks, workspace.id]);
+  const workspaceCampaigns = useMemo(() => campaigns.filter((campaign) => campaign.workspaceId === workspace.id), [campaigns, workspace.id]);
+  const workspaceAutomations = useMemo(() => automations.filter((automation) => automation.workspaceId === workspace.id), [automations, workspace.id]);
+  const workspaceIntegrations = useMemo(() => integrations.filter((integration) => integration.workspaceId === workspace.id), [integrations, workspace.id]);
+
+  const visibleLeads = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return workspaceLeads.filter((lead) => {
+      const matchesSearch =
+        !term ||
+        [lead.contactName, lead.whatsappName, lead.phone, lead.service, lead.location, lead.tags.join(" "), sourceLabels[lead.source]]
+          .join(" ")
+          .toLowerCase()
+          .includes(term);
+      const matchesStage = stageFilter === "all" || lead.stage === stageFilter;
+      const matchesSource = sourceFilter === "all" || lead.source === sourceFilter;
+      return matchesSearch && matchesStage && matchesSource;
+    });
+  }, [searchTerm, sourceFilter, stageFilter, workspaceLeads]);
+
+  const selectedLead = useMemo(
+    () => workspaceLeads.find((lead) => lead.id === selectedLeadId) ?? workspaceLeads[0],
+    [selectedLeadId, workspaceLeads],
   );
-  const workspaceActivities = useMemo(() => {
-    const customerIds = new Set(customers.map((customer) => customer.id));
-    return activities.filter((activity) => customerIds.has(activity.customerId));
-  }, [activities, customers]);
-  const selectedWorkspaceStyle = useMemo(() => buildWorkspaceThemeStyle(workspaceTheme), [workspaceTheme]);
 
-  const responseAverage = getResponseAverage(selectedWorkspace);
-  const pipelineValue = getPipelineValue(conversations);
-  const activePipelineStages = useMemo<PipelineStageConfig[]>(
-    () =>
-      pipelineStages.map((stage) => ({
-        ...stage,
-        label: pipelineStageLabels[stage.id]?.trim() || stage.label,
-      })),
-    [pipelineStageLabels],
-  );
+  const stats = useMemo(() => {
+    const pipelineValue = workspaceLeads.reduce((total, lead) => total + lead.budget, 0);
+    const unread = workspaceLeads.reduce((total, lead) => total + lead.unreadCount, 0);
+    const hot = workspaceLeads.filter((lead) => lead.priority === "hot").length;
+    const pendingTasks = workspaceTasks.filter((task) => !task.completed).length;
+    return { pipelineValue, unread, hot, pendingTasks };
+  }, [workspaceLeads, workspaceTasks]);
 
-  function currentStageLabel(stage: Conversation["stage"]) {
-    return activePipelineStages.find((item) => item.id === stage)?.label ?? stageLabel(stage);
-  }
+  const workspaceStyle = useMemo(() => buildWorkspaceStyle(workspace.theme), [workspace.theme]);
 
-  const filteredConversations = useMemo<Conversation[]>(() => {
-    return filterConversations(
-      conversations,
-      { searchTerm, stageFilter, sourceFilter, ownerFilter },
-      { sourceLabel, stageLabel: currentStageLabel },
-    ) as Conversation[];
-  }, [activePipelineStages, conversations, ownerFilter, searchTerm, sourceFilter, stageFilter]);
-
-  function showToast(message: string) {
-    setToast(message);
-  }
-
-  function chooseTheme(mode: ThemeMode) {
-    setThemeMode(mode);
-  }
-
-  function renamePipelineStage(stageId: Conversation["stage"], label: string) {
-    setPipelineStageLabels((current) => ({ ...current, [stageId]: label }));
-  }
-
-  function resetPipelineStages() {
-    setPipelineStageLabels(defaultPipelineStageLabels);
-    showToast("Etapas del pipeline restauradas.");
-  }
-
-  function updateWorkspaceTheme(partial: Partial<WorkspaceTheme>) {
-    setWorkspaceTheme((current) => ({ ...current, ...partial }));
-  }
-
-  function resetWorkspaceTheme() {
-    setWorkspaceTheme(defaultWorkspaceTheme);
-    showToast("Colores de empresa restaurados.");
+  function switchWorkspace(workspaceId: string) {
+    const nextLead = leads.find((lead) => lead.workspaceId === workspaceId);
+    setSelectedWorkspaceId(workspaceId);
+    setSelectedLeadId(nextLead?.id ?? "");
+    setSearchTerm("");
+    setStageFilter("all");
+    setSourceFilter("all");
   }
 
   function openNewLeadModal() {
-    setEditingConversationId(null);
-    setLeadForm(initialLeadForm);
+    setEditingLeadId(null);
+    setLeadForm(emptyLeadForm);
     setLeadModalOpen(true);
   }
 
-  function openEditLeadModal(conversation: Conversation) {
-    setEditingConversationId(conversation.id);
+  function openEditLeadModal(lead: Lead) {
+    setEditingLeadId(lead.id);
     setLeadForm({
-      name: conversation.contactName,
-      phone: conversation.contactPhone,
-      source: conversation.source,
-      intent: conversation.intent,
-      value: String(conversation.estimatedValue),
+      contactName: lead.contactName,
+      whatsappName: lead.whatsappName,
+      phone: lead.phone,
+      source: lead.source,
+      service: lead.service,
+      location: lead.location,
+      desiredStartDate: lead.desiredStartDate,
+      desiredEndDate: lead.desiredEndDate,
+      budget: String(lead.budget),
+      notes: lead.notes,
+      priority: lead.priority,
+      owner: lead.owner,
     });
     setLeadModalOpen(true);
   }
 
-  async function sendMessage() {
-    const trimmed = messageDraft.trim();
-
-    if (!trimmed || !selectedConversation) {
-      showToast("Escribe un mensaje antes de enviarlo.");
-      return;
-    }
-
-    try {
-      const updated = await postJson<Conversation>(`/api/crm/conversations/${selectedConversation.id}/messages`, {
-        direction: "outbound",
-        body: trimmed,
-        status: "sent",
-      });
-
-      setConversations((current) =>
-        current.map((conversation) => (conversation.id === updated.id ? updated : conversation)),
-      );
-    } catch {
-      const mockMessage = buildOutboundMessage(trimmed) as Message;
-
-      setConversations((current) =>
-        current.map((conversation) =>
-          conversation.id === selectedConversation.id
-            ? (mergeConversationMessage(conversation, mockMessage) as Conversation)
-            : conversation,
-        ),
-      );
-    }
-
-    setMessageDraft("");
-    showToast("Mensaje enviado en modo demo.");
-  }
-
-  async function createLead() {
-    const name = leadForm.name.trim();
+  function saveLead() {
+    const contactName = leadForm.contactName.trim();
     const phone = leadForm.phone.trim();
-    const intent = leadForm.intent.trim();
-
-    if (!name || !phone || !intent || !selectedWorkspaceId) {
-      showToast("Completa nombre, WhatsApp e intencion del lead.");
+    const service = leadForm.service.trim();
+    if (!contactName || !phone || !service) {
+      setToast("Completa nombre, WhatsApp y servicio.");
       return;
     }
 
-    if (editingConversationId) {
-      setConversations((current) =>
-        current.map((conversation) =>
-          conversation.id === editingConversationId
-            ? (applyLeadFormToConversation(conversation, leadForm) as Conversation)
-            : conversation,
-        ),
-      );
-      setLeadModalOpen(false);
-      setEditingConversationId(null);
-      setLeadForm(initialLeadForm);
-      showToast("Lead actualizado.");
-      return;
-    }
+    const payload = {
+      contactName,
+      whatsappName: leadForm.whatsappName.trim() || contactName,
+      phone,
+      source: leadForm.source,
+      service,
+      location: leadForm.location.trim(),
+      desiredStartDate: leadForm.desiredStartDate,
+      desiredEndDate: leadForm.desiredEndDate,
+      budget: Number(leadForm.budget || 0),
+      notes: leadForm.notes.trim(),
+      priority: leadForm.priority,
+      owner: leadForm.owner,
+    };
 
-    const payload = buildConversationPayload({ form: leadForm, workspaceId: selectedWorkspaceId });
-
-    let conversation: Conversation;
-
-    try {
-      conversation = await postJson<Conversation>("/api/crm/conversations", payload);
-    } catch {
-      conversation = buildFallbackConversation(payload) as Conversation;
-    }
-
-    setConversations((current) => [conversation, ...current]);
-    setSelectedConversationId(conversation.id);
-    setActiveView("inbox");
-    setLeadForm(initialLeadForm);
-    setLeadModalOpen(false);
-    showToast("Lead creado.");
-  }
-
-  async function createWorkspace() {
-    const name = workspaceForm.name.trim();
-    const industry = workspaceForm.industry.trim();
-    const owner = workspaceForm.owner.trim();
-    const phone = workspaceForm.phone.trim();
-
-    if (!name || !industry || !owner || !phone) {
-      showToast("Completa los datos basicos de la empresa.");
-      return;
-    }
-
-    const payload = buildWorkspacePayload(workspaceForm);
-
-    let workspace: Workspace;
-
-    try {
-      workspace = await postJson<Workspace>("/api/crm/workspaces", payload);
-    } catch {
-      workspace = buildFallbackWorkspace(payload) as Workspace;
-    }
-
-    setWorkspaces((current) => [...current, workspace].sort((a, b) => a.name.localeCompare(b.name)));
-    setSelectedWorkspaceId(workspace.id);
-    setWorkspaceForm(initialWorkspaceForm);
-    setWorkspaceModalOpen(false);
-    setActiveView("settings");
-    showToast("Empresa creada.");
-  }
-
-  async function updateConversationStage(conversationId: string, stage: Conversation["stage"]) {
-    try {
-      const updated = await patchJson<Conversation>(`/api/crm/conversations/${conversationId}`, { stage });
-
-      setConversations((current) =>
-        current.map((conversation) => (conversation.id === updated.id ? updated : conversation)),
-      );
-      setSelectedConversationId(updated.id);
-    } catch {
-      setConversations((current) =>
-        current.map((conversation) =>
-          conversation.id === conversationId ? { ...conversation, stage } : conversation,
-        ),
-      );
-      setSelectedConversationId(conversationId);
-    }
-
-    showToast(`Lead movido a ${currentStageLabel(stage)}.`);
-  }
-
-  function deleteConversation(conversationId: string) {
-    fetch(`/api/crm/conversations/${conversationId}`, { method: "DELETE" }).catch(() => undefined);
-    setConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
-    if (selectedConversationId === conversationId) {
-      setSelectedConversationId(resolveNextConversationId(conversations, conversationId));
-    }
-    showToast("Lead eliminado del MVP.");
-  }
-
-  function assignConversationOwner(conversationId: string, owner: string) {
-    patchJson<Conversation>(`/api/crm/conversations/${conversationId}`, { owner }).catch(() => undefined);
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.id === conversationId ? { ...conversation, owner } : conversation,
-      ),
-    );
-    showToast(`Responsable asignado: ${owner}.`);
-  }
-
-  function saveInternalNote() {
-    if (!selectedConversation) return;
-    const internalNotes = leadNotes[selectedConversation.id] ?? selectedConversation.internalNotes ?? "";
-    patchJson<Conversation>(`/api/crm/conversations/${selectedConversation.id}`, { internalNotes })
-      .then((updated) => {
-        setConversations((current) =>
-          current.map((conversation) => (conversation.id === updated.id ? updated : conversation)),
-        );
-      })
-      .catch(() => {
-        setConversations((current) =>
-          current.map((conversation) =>
-            conversation.id === selectedConversation.id ? { ...conversation, internalNotes } : conversation,
-          ),
-        );
-      });
-    showToast("Nota interna guardada.");
-    setNoteModalOpen(false);
-  }
-
-  function createTask() {
-    const title = taskForm.title.trim();
-
-    if (!title) {
-      showToast("Escribe el titulo de la tarea.");
-      return;
-    }
-
-    const payload = buildTaskPayload(taskForm);
-    const fallbackActivity = buildFallbackActivity(payload, customers[0]?.id) as Activity;
-
-    if (selectedConversationId) {
-      postJson<Activity>(`/api/crm/conversations/${selectedConversationId}/tasks`, payload)
-        .then((activity) => setActivities((current) => [activity, ...current]))
-        .catch(() => setActivities((current) => [fallbackActivity, ...current]));
+    if (editingLeadId) {
+      setLeads((current) => current.map((lead) => (lead.id === editingLeadId ? { ...lead, ...payload } : lead)));
+      setToast("Ficha del lead actualizada.");
     } else {
-      setActivities((current) => [fallbackActivity, ...current]);
+      const lead: Lead = {
+        id: `lead-${Date.now()}`,
+        workspaceId: workspace.id,
+        stage: "new_lead",
+        tags: [sourceLabels[payload.source], payload.service.split(" ")[0] || "Lead"],
+        unreadCount: 1,
+        lastMessageAt: new Date().toISOString(),
+        messages: [
+          {
+            id: `msg-${Date.now()}`,
+            direction: "inbound",
+            body: payload.notes || `Hola, necesito informacion sobre ${payload.service}.`,
+            status: "received",
+            sentAt: new Date().toISOString(),
+          },
+        ],
+        ...payload,
+      };
+      setLeads((current) => [lead, ...current]);
+      setSelectedLeadId(lead.id);
+      setActiveView("inbox");
+      setToast("Lead creado en la bandeja de WhatsApp.");
     }
-    setTaskForm({ title: "", dueDate: "", notes: "" });
-    setTaskModalOpen(false);
-    setActiveView("tasks");
-    showToast("Tarea creada.");
+
+    setLeadModalOpen(false);
+    setLeadForm(emptyLeadForm);
+    setEditingLeadId(null);
   }
 
-  function completeTask(activityId: string) {
-    patchJson<Activity>(`/api/crm/activities/${activityId}`, { completedAt: new Date().toISOString() }).catch(
-      () => undefined,
-    );
-    setActivities((current) =>
-      current.map((activity) =>
-        activity.id === activityId ? (completeActivity(activity) as Activity) : activity,
+  function deleteLead(leadId: string) {
+    setLeads((current) => current.filter((lead) => lead.id !== leadId));
+    setTasks((current) => current.filter((task) => task.leadId !== leadId));
+    if (selectedLeadId === leadId) setSelectedLeadId(workspaceLeads.find((lead) => lead.id !== leadId)?.id ?? "");
+    setToast("Lead eliminado.");
+  }
+
+  function moveLead(leadId: string, stage: Stage) {
+    setLeads((current) => current.map((lead) => (lead.id === leadId ? { ...lead, stage } : lead)));
+    setToast(`Lead movido a ${workspace.stageLabels[stage]}.`);
+  }
+
+  function sendMessage() {
+    const body = messageDraft.trim();
+    if (!selectedLead || !body) return;
+    const message: Message = { id: `msg-${Date.now()}`, direction: "outbound", body, status: "sent", sentAt: new Date().toISOString() };
+    setLeads((current) =>
+      current.map((lead) =>
+        lead.id === selectedLead.id ? { ...lead, messages: [...lead.messages, message], unreadCount: 0, lastMessageAt: message.sentAt } : lead,
       ),
     );
-    showToast("Tarea marcada como completada.");
+    setMessageDraft("");
   }
 
-  function markConversationRead(conversationId: string) {
-    postJson<Conversation>(`/api/crm/conversations/${conversationId}/read`, {})
-      .then((updated) =>
-        setConversations((current) =>
-          current.map((conversation) => (conversation.id === updated.id ? updated : conversation)),
-        ),
-      )
-      .catch(() => undefined);
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.id === conversationId ? { ...conversation, unreadCount: 0 } : conversation,
+  function addQuickMessage(text: string) {
+    setMessageDraft(text);
+  }
+
+  function createTaskForLead(lead?: Lead, type: Task["type"] = "follow_up") {
+    const task: Task = {
+      id: `task-${Date.now()}`,
+      workspaceId: workspace.id,
+      leadId: lead?.id,
+      title: lead ? `Dar seguimiento a ${lead.contactName}` : "Nueva tarea comercial",
+      dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString().slice(0, 10),
+      type,
+      completed: false,
+    };
+    setTasks((current) => [task, ...current]);
+    setToast("Seguimiento creado.");
+  }
+
+  function completeTask(taskId: string) {
+    setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, completed: true } : task)));
+  }
+
+  function toggleAutomation(automationId: string) {
+    setAutomations((current) =>
+      current.map((automation) => (automation.id === automationId ? { ...automation, active: !automation.active } : automation)),
+    );
+  }
+
+  function updateWorkspaceTheme(partial: Partial<WorkspaceTheme>) {
+    setWorkspaces((current) =>
+      current.map((item) => (item.id === workspace.id ? { ...item, theme: { ...item.theme, ...partial } } : item)),
+    );
+  }
+
+  function updateStageLabel(stage: Stage, label: string) {
+    setWorkspaces((current) =>
+      current.map((item) =>
+        item.id === workspace.id ? { ...item, stageLabels: { ...item.stageLabels, [stage]: label || defaultStageLabels[stage] } } : item,
       ),
     );
-    showToast("Conversacion marcada como respondida.");
   }
 
-  function showDevelopmentToast() {
-    showToast("Funcion en desarrollo para integracion real.");
+  function createCompany() {
+    const name = companyForm.name.trim();
+    if (!name || !companyForm.phone.trim()) {
+      setToast("Completa nombre y WhatsApp comercial.");
+      return;
+    }
+    const company: Workspace = {
+      id: `ws-${Date.now()}`,
+      name,
+      industry: companyForm.industry.trim() || "Cliente comercial",
+      owner: companyForm.owner.trim() || "JP Sistems",
+      phone: companyForm.phone.trim(),
+      responseSlaMinutes: Number(companyForm.responseSlaMinutes || 8),
+      whatsappStatus: "pending",
+      metaStatus: "pending",
+      theme: { primary: "#8b102c", accent: "#e11d48", soft: "#fff1f4" },
+      stageLabels: { ...defaultStageLabels },
+    };
+    setWorkspaces((current) => [...current, company]);
+    setSelectedWorkspaceId(company.id);
+    setSelectedLeadId("");
+    setCompanyModalOpen(false);
+    setCompanyForm({ name: "", industry: "", owner: "JP Sistems", phone: "", responseSlaMinutes: "8" });
+    setActiveView("settings");
   }
 
-  function toggleAutomation(automation: AutomationRule) {
-    const nextAutomation = toggleAutomationState(automation) as AutomationRule;
-    const nextActive = nextAutomation.active;
-    patchJson<AutomationRule>(`/api/crm/automations/${automation.id}`, { active: nextActive })
-      .then((updated) => {
-        setAutomations((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      })
-      .catch(() => {
-        setAutomations((current) =>
-          current.map((item) => (item.id === automation.id ? nextAutomation : item)),
-        );
-      });
-    showToast(nextActive ? "Automatizacion activada." : "Automatizacion pausada.");
-  }
-
-  if (authLoading) {
-    return <main className="loadingScreen">Validando sesion...</main>;
-  }
-
-  if (!user) {
-    return <main className="loadingScreen">Entrando al CRM...</main>;
-  }
-
-  if (loading) {
-    return <main className="loadingScreen">Cargando CRM...</main>;
-  }
-
-  if (!selectedWorkspace) {
-    return <main className="loadingScreen">No hay clientes configurados todavia.</main>;
+  function copyPhone(phone: string) {
+    navigator.clipboard?.writeText(phone).catch(() => undefined);
+    setToast("Telefono copiado.");
   }
 
   return (
-    <main className="appShell" data-theme={themeMode} style={selectedWorkspaceStyle}>
-      <aside className="sidebar" aria-label="Navegacion principal">
-        <div className="brandBlock">
-          <img
-            className="brandMark"
-            src={themeMode === "dark" ? "/brand/jp-logo-dark.png" : "/brand/jp-logo-light.png"}
-            alt="JP Sistems"
-          />
-          <div>
-            <strong>JP Sistems CRM</strong>
-            <span>WhatsApp + Meta</span>
-          </div>
-        </div>
-
-        <nav className="navList">
-          {viewItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                className={`navItem ${activeView === item.id ? "active" : ""}`}
-                key={item.id}
-                onClick={() => setActiveView(item.id)}
-              >
-                <Icon size={18} />
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <section className="workspace">
-        <header className="topbar">
-          <div className="clientSwitcher">
-            <label htmlFor="client">Cliente activo</label>
-            <div className="selectWrap">
-              <select
-                id="client"
-                value={selectedWorkspaceId}
-                onChange={(event) => setSelectedWorkspaceId(event.target.value)}
-              >
-                {workspaces.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={18} />
+    <main
+      data-theme={themeMode}
+      style={workspaceStyle}
+      className="min-h-screen bg-[var(--app-bg)] text-[var(--ink)]"
+    >
+      <div className="grid min-h-screen grid-cols-[176px_minmax(0,1fr)] max-lg:grid-cols-1">
+        <aside className="sticky top-0 flex h-screen flex-col gap-3 border-r border-[var(--line)] bg-[#18070d] px-2 py-3 text-white max-lg:static max-lg:h-auto max-lg:flex-row max-lg:overflow-x-auto">
+          <div className="flex items-center gap-2 px-1">
+            <img
+              className="h-8 w-8 rounded-lg object-cover"
+              src={themeMode === "dark" ? "/brand/jp-logo-dark.png" : "/brand/jp-logo-light.png"}
+              alt="JP Sistems"
+            />
+            <div className="min-w-0 max-lg:hidden">
+              <strong className="block truncate text-sm">JP CRM</strong>
+              <span className="block text-[11px] text-rose-100/70">WhatsApp + Meta</span>
             </div>
           </div>
 
-          <label className="searchBox">
-            <Search size={18} />
-            <input
-              placeholder="Buscar contacto, etiqueta, campana o mensaje"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-          </label>
-
-          <div className="topActions">
-            <ThemeSwitch themeMode={themeMode} onThemeChange={chooseTheme} />
-            <button className="primaryButton" onClick={openNewLeadModal}>
-              <UserRoundPlus size={18} />
-              Nuevo lead
-            </button>
-            <button className="secondaryButton" onClick={() => setWorkspaceModalOpen(true)}>
-              <Building2 size={18} />
-              Nueva empresa
-            </button>
-          </div>
-        </header>
-
-        {toast && <div className="toastBanner">{toast}</div>}
-        {error && <div className="alertBanner">{error}</div>}
-
-        <section className="clientBand">
-          <div>
-            <p className="eyebrow">Operacion multi-cliente</p>
-            <h1>{selectedWorkspace.name}</h1>
-            <p>
-              {selectedWorkspace.industry} - {selectedWorkspace.phone} - Responsable:{" "}
-              {selectedWorkspace.owner}
-            </p>
-          </div>
-        </section>
-
-        <section className="metricsRow" aria-label="Indicadores principales">
-          <Metric label="Conversaciones" value={`${filteredConversations.length}`} detail="Leads visibles con filtros" />
-          <Metric label="Respuesta media" value={responseAverage} detail={`Objetivo ${selectedWorkspace.responseSlaMinutes} min`} />
-          <Metric label="Leads activos" value={`${conversations.length}`} detail="Base comercial del cliente" />
-          <Metric label="Valor pipeline" value={money(pipelineValue)} detail="Oportunidades del cliente" />
-        </section>
-
-        {activeView === "dashboard" && (
-          <DashboardView
-            campaigns={campaigns}
-            conversations={filteredConversations}
-            customers={customers}
-            activities={workspaceActivities}
-            summary={summary}
-          />
-        )}
-
-        {activeView === "clients" && (
-          <ClientsView
-            workspaces={workspaces}
-            selectedWorkspaceId={selectedWorkspaceId}
-            onSelect={(workspaceId) => {
-              setSelectedWorkspaceId(workspaceId);
-              setActiveView("dashboard");
-            }}
-            onCreate={() => setWorkspaceModalOpen(true)}
-          />
-        )}
-
-        {activeView === "inbox" && (
-          <section className="mainGrid">
-            <section className="panel inboxPanel" aria-label="Bandeja de WhatsApp">
-              <PanelHeading
-                eyebrow="WhatsApp primero"
-                title="Bandeja unificada"
-                onFilter={() => showToast("Usa los filtros de la barra lateral derecha.")}
-                onMore={() => setTaskModalOpen(true)}
-              />
-              <div className="conversationList">
-                {filteredConversations.map((conversation) => (
-                  <button
-                    className={`conversationRow ${
-                      selectedConversation?.id === conversation.id ? "selected" : ""
-                    }`}
-                    key={conversation.id}
-                    onClick={() => {
-                      setSelectedConversationId(conversation.id);
-                      markConversationRead(conversation.id);
-                    }}
-                  >
-                    <div className="avatar">{initials(conversation.contactName)}</div>
-                    <div className="conversationCopy">
-                      <div className="rowBetween">
-                        <strong>{conversation.contactName}</strong>
-                        <span>{relativeTime(conversation.lastMessageAt)}</span>
-                      </div>
-                      <p>{conversation.intent}</p>
-                      <div className="tagRow">
-                        <span>{currentStageLabel(conversation.stage)}</span>
-                        <span>{sourceLabel(conversation.source)}</span>
-                      </div>
-                    </div>
-                    {conversation.unreadCount > 0 && (
-                      <span className="unreadCount">{conversation.unreadCount}</span>
-                    )}
-                  </button>
-                ))}
-                {!filteredConversations.length && <div className="emptyInline">No hay leads con estos filtros.</div>}
-              </div>
-            </section>
-
-            {selectedConversation ? (
-              <section className="panel chatPanel" aria-label="Conversacion seleccionada">
-                <div className="chatHeader">
-                  <div>
-                    <h2>{selectedConversation.contactName}</h2>
-                    <p>
-                      {currentStageLabel(selectedConversation.stage)} - {selectedConversation.owner} -{" "}
-                      {selectedConversation.contactPhone}
-                    </p>
-                  </div>
-                  <div className="toolbar">
-                    <select
-                      className="stageSelect"
-                      aria-label="Cambiar etapa"
-                      value={selectedConversation.stage}
-                      onChange={(event) =>
-                        updateConversationStage(
-                          selectedConversation.id,
-                          event.target.value as Conversation["stage"],
-                        )
-                      }
-                    >
-                      {activePipelineStages.map((stage) => (
-                        <option key={stage.id} value={stage.id}>
-                          {stage.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="iconButton"
-                      aria-label="Llamar contacto"
-                      onClick={() => showToast(`Llamada demo a ${selectedConversation.contactPhone}`)}
-                    >
-                      <PhoneCall size={18} />
-                    </button>
-                    <button
-                      className="iconButton"
-                      aria-label="Etiquetar contacto"
-                      onClick={() => showToast("Etiqueta Caliente agregada al lead.")}
-                    >
-                      <Tags size={18} />
-                    </button>
-                    <button className="iconButton" aria-label="Mas acciones" onClick={() => setNoteModalOpen(true)}>
-                      <MoreHorizontal size={18} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="chatBody">
-                  {selectedConversation.messages.map((message) => (
-                    <div
-                      className={`messageBubble ${message.direction === "outbound" ? "agent" : ""}`}
-                      key={message.id}
-                    >
-                      {message.body}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="leadSummary">
-                  <SummaryItem label="Origen" value={sourceLabel(selectedConversation.source)} />
-                  <SummaryItem label="Valor" value={money(selectedConversation.estimatedValue)} />
-                  <SummaryItem label="Canal" value="WhatsApp" />
-                </div>
-
-                <form
-                  className="composer"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    sendMessage();
-                  }}
+          <nav className="grid gap-1 max-lg:flex">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = activeView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveView(item.id)}
+                  className={cn(
+                    "flex h-8 items-center gap-2 rounded-lg px-2 text-left text-xs font-bold transition",
+                    active ? "bg-white text-[#7f102b]" : "text-rose-50/80 hover:bg-white/10 hover:text-white",
+                  )}
                 >
-                  <input
-                    placeholder="Escribe una respuesta o usa una plantilla aprobada"
-                    value={messageDraft}
-                    onChange={(event) => setMessageDraft(event.target.value)}
-                  />
-                  <button aria-label="Enviar mensaje" type="submit">
-                    <Send size={18} />
-                  </button>
-                </form>
-              </section>
-            ) : (
-              <section className="panel emptyPanel">No hay conversaciones para este cliente.</section>
-            )}
+                  <Icon size={15} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
-            <aside className="panel opsPanel" aria-label="Operacion del cliente">
-              <QuickActions
-                pipelineStages={activePipelineStages}
-                stageFilter={stageFilter}
-                sourceFilter={sourceFilter}
-                ownerFilter={ownerFilter}
-                onStageFilterChange={setStageFilter}
-                onSourceFilterChange={setSourceFilter}
-                onOwnerFilterChange={setOwnerFilter}
-                onQuickReply={(reply) => setMessageDraft(reply)}
-                onCreateTask={() => setTaskModalOpen(true)}
-                onCreateDeal={() => {
-                  if (selectedConversation) {
-                    updateConversationStage(selectedConversation.id, "follow_up");
-                  }
-                }}
+        <section className="min-w-0 p-3">
+          <header className="mb-3 grid grid-cols-[minmax(210px,280px)_minmax(260px,1fr)_auto] items-end gap-2 max-xl:grid-cols-1">
+            <label className="grid gap-1 text-[11px] font-black uppercase text-[var(--muted)]">
+              Cliente activo
+              <div className="relative">
+                <select className={cn(input, "appearance-none pr-8 font-bold")} value={workspace.id} onChange={(event) => switchWorkspace(event.target.value)}>
+                  {workspaces.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-2.5 text-[var(--muted)]" size={16} />
+              </div>
+            </label>
+
+            <label className="relative">
+              <Search className="absolute left-3 top-2.5 text-[var(--muted)]" size={16} />
+              <input
+                className={cn(input, "pl-9")}
+                placeholder="Buscar por nombre, WhatsApp, servicio, etiqueta o ciudad"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
               />
-            </aside>
+            </label>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--brand)]"
+                onClick={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
+                aria-label="Cambiar modo"
+              >
+                {themeMode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+              <Button onClick={openNewLeadModal} icon={UserRoundPlus} label="Nuevo lead" />
+              <Button variant="secondary" onClick={() => setCompanyModalOpen(true)} icon={Building2} label="Empresa" />
+            </div>
+          </header>
+
+          <section className={cn(panel, "mb-3 grid grid-cols-[1fr_auto] items-center gap-3 p-3 max-md:grid-cols-1")}>
+            <div>
+              <p className="text-[11px] font-black uppercase text-[var(--brand)]">Operacion por empresa</p>
+              <h1 className="mt-1 text-2xl font-black leading-none">{workspace.name}</h1>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                {workspace.industry} · {workspace.phone} · Responsable: {workspace.owner}
+              </p>
+            </div>
+            <div className="grid grid-cols-4 gap-2 max-md:grid-cols-2">
+              <Stat label="Leads" value={`${workspaceLeads.length}`} />
+              <Stat label="Sin leer" value={`${stats.unread}`} />
+              <Stat label="Hot" value={`${stats.hot}`} />
+              <Stat label="Pipeline" value={money(stats.pipelineValue)} />
+            </div>
           </section>
-        )}
 
-        {activeView === "pipeline" && (
-          <PipelineView
-            conversations={filteredConversations}
-            pipelineStages={activePipelineStages}
-            onMove={updateConversationStage}
-            onOpen={(conversation) => {
-              setSelectedConversationId(conversation.id);
-              setActiveView("inbox");
-            }}
-            onRenameStage={renamePipelineStage}
-            onResetStages={resetPipelineStages}
-          />
-        )}
-        {activeView === "contacts" && (
-          <ContactsView
-            conversations={filteredConversations}
-            customers={customers}
-            onOpen={(conversation) => {
-              setSelectedConversationId(conversation.id);
-              setActiveView("inbox");
-            }}
-            onEdit={openEditLeadModal}
-            onDelete={deleteConversation}
-          />
-        )}
-        {activeView === "tasks" && (
-          <TasksView
-            activities={workspaceActivities}
-            customers={customers}
-            conversations={filteredConversations}
-            onCreate={() => setTaskModalOpen(true)}
-            onComplete={completeTask}
-            onOpenConversation={(conversation) => {
-              setSelectedConversationId(conversation.id);
-              setActiveView("inbox");
-            }}
-          />
-        )}
-        {activeView === "campaigns" && <CampaignsView sources={campaigns} onOpenSource={(source) => setSourceFilter(source.channel)} />}
-        {activeView === "automations" && (
-          <AutomationsView
-            automations={automations}
-            botConfig={botConfig}
-            followUpRules={followUpRules}
-            pipelineStages={activePipelineStages}
-            onToggle={toggleAutomation}
-            onBotConfigChange={setBotConfig}
-            onFollowUpRulesChange={setFollowUpRules}
-          />
-        )}
-        {activeView === "integrations" && <IntegrationsView integrations={integrations} onConnect={showDevelopmentToast} />}
-        {activeView === "settings" && (
-          <SettingsView
-            workspace={selectedWorkspace}
-            integrations={integrations}
-            pipelineStages={activePipelineStages}
-            workspaceTheme={workspaceTheme}
-            themeMode={themeMode}
-            onThemeChange={chooseTheme}
-            onWorkspaceThemeChange={updateWorkspaceTheme}
-            onResetWorkspaceTheme={resetWorkspaceTheme}
-            onEdit={showDevelopmentToast}
-          />
-        )}
+          {toast && <div className="fixed right-4 top-4 z-50 rounded-lg bg-[#14070b] px-4 py-3 text-sm font-bold text-white shadow-calm">{toast}</div>}
 
-        {leadModalOpen && (
-          <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Nuevo lead">
-            <section className="modalPanel">
-              <div className="modalHeader">
-                <div>
-                  <p className="eyebrow">{editingConversationId ? "Edicion de lead" : "Captura manual"}</p>
-                  <h2>{editingConversationId ? "Editar lead WhatsApp" : "Nuevo lead WhatsApp"}</h2>
-                </div>
-                <button className="iconButton" onClick={() => setLeadModalOpen(false)} aria-label="Cerrar">
-                  <MoreHorizontal size={18} />
-                </button>
-              </div>
+          {activeView === "dashboard" && (
+            <DashboardView leads={workspaceLeads} tasks={workspaceTasks} campaigns={workspaceCampaigns} workspace={workspace} />
+          )}
+          {activeView === "clients" && (
+            <ClientsView workspaces={workspaces} selectedWorkspaceId={workspace.id} onSelect={switchWorkspace} onCreate={() => setCompanyModalOpen(true)} />
+          )}
+          {activeView === "inbox" && (
+            <InboxView
+              leads={visibleLeads}
+              selectedLead={selectedLead}
+              workspace={workspace}
+              stageFilter={stageFilter}
+              sourceFilter={sourceFilter}
+              messageDraft={messageDraft}
+              onStageFilter={setStageFilter}
+              onSourceFilter={setSourceFilter}
+              onSelectLead={setSelectedLeadId}
+              onMoveLead={moveLead}
+              onEditLead={openEditLeadModal}
+              onDeleteLead={deleteLead}
+              onDraftChange={setMessageDraft}
+              onSend={sendMessage}
+              onQuickMessage={addQuickMessage}
+              onTask={createTaskForLead}
+              onCopyPhone={copyPhone}
+            />
+          )}
+          {activeView === "pipeline" && (
+            <PipelineView
+              leads={visibleLeads}
+              workspace={workspace}
+              draggedLeadId={draggedLeadId}
+              onDragStart={setDraggedLeadId}
+              onDrop={(stage) => {
+                if (draggedLeadId) moveLead(draggedLeadId, stage);
+                setDraggedLeadId(null);
+              }}
+              onOpen={(lead) => {
+                setSelectedLeadId(lead.id);
+                setActiveView("inbox");
+              }}
+              onStageNameChange={updateStageLabel}
+            />
+          )}
+          {activeView === "contacts" && <ContactsView leads={visibleLeads} workspace={workspace} onEdit={openEditLeadModal} onDelete={deleteLead} />}
+          {activeView === "tasks" && <TasksView tasks={workspaceTasks} leads={workspaceLeads} onCreate={() => createTaskForLead(selectedLead)} onComplete={completeTask} />}
+          {activeView === "campaigns" && <CampaignsView campaigns={workspaceCampaigns} onFilter={(source) => setSourceFilter(source)} />}
+          {activeView === "automations" && (
+            <AutomationsView automations={workspaceAutomations} workspace={workspace} onToggle={toggleAutomation} />
+          )}
+          {activeView === "integrations" && <IntegrationsView integrations={workspaceIntegrations} />}
+          {activeView === "settings" && (
+            <SettingsView
+              workspace={workspace}
+              onThemeChange={updateWorkspaceTheme}
+              onStageNameChange={updateStageLabel}
+              onCompanyChange={(partial) =>
+                setWorkspaces((current) => current.map((item) => (item.id === workspace.id ? { ...item, ...partial } : item)))
+              }
+            />
+          )}
+        </section>
+      </div>
 
-              <div className="formGrid">
-                <label>
-                  Nombre
-                  <input
-                    value={leadForm.name}
-                    onChange={(event) => setLeadForm({ ...leadForm, name: event.target.value })}
-                    placeholder="Nombre del contacto"
-                  />
-                </label>
-                <label>
-                  WhatsApp
-                  <input
-                    value={leadForm.phone}
-                    onChange={(event) => setLeadForm({ ...leadForm, phone: event.target.value })}
-                    placeholder="+593 ..."
-                  />
-                </label>
-                <label>
-                  Fuente
-                  <select
-                    value={leadForm.source}
-                    onChange={(event) =>
-                      setLeadForm({ ...leadForm, source: event.target.value as Conversation["source"] })
-                    }
-                  >
-                    {sourceOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Valor estimado
-                  <input
-                    value={leadForm.value}
-                    onChange={(event) => setLeadForm({ ...leadForm, value: event.target.value })}
-                    placeholder="320"
-                    inputMode="numeric"
-                  />
-                </label>
-                <label className="fullField">
-                  Intencion
-                  <textarea
-                    value={leadForm.intent}
-                    onChange={(event) => setLeadForm({ ...leadForm, intent: event.target.value })}
-                    placeholder="Que quiere comprar, agendar o consultar"
-                  />
-                </label>
-              </div>
-
-              <div className="modalActions">
-                <button className="secondaryButton" onClick={() => setLeadModalOpen(false)}>
-                  Cancelar
-                </button>
-                <button className="primaryButton" onClick={createLead}>
-                  <Check size={18} />
-                  {editingConversationId ? "Guardar cambios" : "Crear lead"}
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {workspaceModalOpen && (
-          <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Nueva empresa">
-            <section className="modalPanel">
-              <div className="modalHeader">
-                <div>
-                  <p className="eyebrow">Workspace independiente</p>
-                  <h2>Nueva empresa cliente</h2>
-                </div>
-                <button className="iconButton" onClick={() => setWorkspaceModalOpen(false)} aria-label="Cerrar">
-                  <MoreHorizontal size={18} />
-                </button>
-              </div>
-
-              <div className="formGrid">
-                <label>
-                  Nombre comercial
-                  <input
-                    value={workspaceForm.name}
-                    onChange={(event) => setWorkspaceForm({ ...workspaceForm, name: event.target.value })}
-                    placeholder="Clinica, inmobiliaria, ecommerce"
-                  />
-                </label>
-                <label>
-                  Industria
-                  <input
-                    value={workspaceForm.industry}
-                    onChange={(event) => setWorkspaceForm({ ...workspaceForm, industry: event.target.value })}
-                    placeholder="Marketing, salud, fitness"
-                  />
-                </label>
-                <label>
-                  Responsable agencia
-                  <input
-                    value={workspaceForm.owner}
-                    onChange={(event) => setWorkspaceForm({ ...workspaceForm, owner: event.target.value })}
-                  />
-                </label>
-                <label>
-                  WhatsApp comercial
-                  <input
-                    value={workspaceForm.phone}
-                    onChange={(event) => setWorkspaceForm({ ...workspaceForm, phone: event.target.value })}
-                    placeholder="+593 ..."
-                  />
-                </label>
-                <label className="fullField">
-                  SLA de respuesta en minutos
-                  <input
-                    value={workspaceForm.responseSlaMinutes}
-                    onChange={(event) =>
-                      setWorkspaceForm({ ...workspaceForm, responseSlaMinutes: event.target.value })
-                    }
-                    inputMode="numeric"
-                  />
-                </label>
-              </div>
-
-              <div className="modalActions">
-                <button className="secondaryButton" onClick={() => setWorkspaceModalOpen(false)}>
-                  Cancelar
-                </button>
-                <button className="primaryButton" onClick={createWorkspace}>
-                  <Check size={18} />
-                  Crear empresa
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {taskModalOpen && (
-          <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Nueva tarea">
-            <section className="modalPanel">
-              <div className="modalHeader">
-                <div>
-                  <p className="eyebrow">Seguimiento</p>
-                  <h2>Nueva tarea</h2>
-                </div>
-                <button className="iconButton" onClick={() => setTaskModalOpen(false)} aria-label="Cerrar">
-                  <MoreHorizontal size={18} />
-                </button>
-              </div>
-              <div className="formGrid">
-                <label>
-                  Titulo
-                  <input
-                    value={taskForm.title}
-                    onChange={(event) => setTaskForm({ ...taskForm, title: event.target.value })}
-                    placeholder="Llamar, enviar propuesta, confirmar cita"
-                  />
-                </label>
-                <label>
-                  Fecha
-                  <input
-                    type="date"
-                    value={taskForm.dueDate}
-                    onChange={(event) => setTaskForm({ ...taskForm, dueDate: event.target.value })}
-                  />
-                </label>
-                <label className="fullField">
-                  Nota
-                  <textarea
-                    value={taskForm.notes}
-                    onChange={(event) => setTaskForm({ ...taskForm, notes: event.target.value })}
-                    placeholder="Detalle interno para el asesor"
-                  />
-                </label>
-              </div>
-              <div className="modalActions">
-                <button className="secondaryButton" onClick={() => setTaskModalOpen(false)}>
-                  Cancelar
-                </button>
-                <button className="primaryButton" onClick={createTask}>
-                  <Check size={18} />
-                  Crear tarea
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {noteModalOpen && selectedConversation && (
-          <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Nota interna">
-            <section className="modalPanel">
-              <div className="modalHeader">
-                <div>
-                  <p className="eyebrow">Operacion interna</p>
-                  <h2>{selectedConversation.contactName}</h2>
-                </div>
-                <button className="iconButton" onClick={() => setNoteModalOpen(false)} aria-label="Cerrar">
-                  <MoreHorizontal size={18} />
-                </button>
-              </div>
-              <div className="formGrid">
-                <label>
-                  Responsable
-                  <select
-                    value={selectedConversation.owner}
-                    onChange={(event) => assignConversationOwner(selectedConversation.id, event.target.value)}
-                  >
-                    {ownerOptions.map((owner) => (
-                      <option key={owner} value={owner}>
-                        {owner}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Estado
-                  <select
-                    value={selectedConversation.stage}
-                    onChange={(event) =>
-                      updateConversationStage(selectedConversation.id, event.target.value as Conversation["stage"])
-                    }
-                  >
-                    {activePipelineStages.map((stage) => (
-                      <option key={stage.id} value={stage.id}>
-                        {stage.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="fullField">
-                  Nota interna
-                  <textarea
-                    value={leadNotes[selectedConversation.id] ?? selectedConversation.internalNotes ?? ""}
-                    onChange={(event) =>
-                      setLeadNotes((current) => ({
-                        ...current,
-                        [selectedConversation.id]: event.target.value,
-                      }))
-                    }
-                    placeholder="Resumen de objeciones, interes, presupuesto o proximo paso"
-                  />
-                </label>
-              </div>
-              <div className="modalActions">
-                <button className="secondaryButton" onClick={() => openEditLeadModal(selectedConversation)}>
-                  <Edit3 size={18} />
-                  Editar lead
-                </button>
-                <button className="secondaryButton" onClick={() => setTaskModalOpen(true)}>
-                  <CalendarClock size={18} />
-                  Crear tarea
-                </button>
-                <button className="primaryButton" onClick={saveInternalNote}>
-                  <Check size={18} />
-                  Guardar
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
-
-      </section>
+      {leadModalOpen && (
+        <LeadModal
+          form={leadForm}
+          editing={Boolean(editingLeadId)}
+          onChange={setLeadForm}
+          onClose={() => setLeadModalOpen(false)}
+          onSave={saveLead}
+        />
+      )}
+      {companyModalOpen && (
+        <CompanyModal form={companyForm} onChange={setCompanyForm} onClose={() => setCompanyModalOpen(false)} onSave={createCompany} />
+      )}
     </main>
   );
 }
 
-async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
-
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
-
-async function patchJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
-
-function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
+function Button({ label, icon: Icon, variant = "primary", onClick }: { label: string; icon: LucideIcon; variant?: "primary" | "secondary"; onClick: () => void }) {
   return (
-    <article className="metricCard">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </article>
-  );
-}
-
-function PanelHeading({
-  eyebrow,
-  title,
-  onFilter,
-  onMore,
-}: {
-  eyebrow?: string;
-  title: string;
-  onFilter?: () => void;
-  onMore?: () => void;
-}) {
-  return (
-    <div className="panelHeading">
-      <div>
-        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-        <h2>{title}</h2>
-      </div>
-      {(onFilter || onMore) && (
-        <div className="toolbar">
-          {onFilter && (
-            <button className="iconButton" aria-label="Filtrar" onClick={onFilter}>
-              <Filter size={18} />
-            </button>
-          )}
-          {onMore && (
-            <button className="iconButton" aria-label="Mas opciones" onClick={onMore}>
-              <MoreHorizontal size={18} />
-            </button>
-          )}
-        </div>
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-sm font-black transition",
+        variant === "primary"
+          ? "bg-[var(--accent)] text-white shadow-calm hover:opacity-90"
+          : "border border-[var(--line)] bg-[var(--surface)] text-[var(--ink)] hover:text-[var(--brand)]",
       )}
+    >
+      <Icon size={16} />
+      {label}
+    </button>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-soft)] px-3 py-2">
+      <span className="block text-[11px] font-black uppercase text-[var(--muted)]">{label}</span>
+      <strong className="block text-lg leading-tight">{value}</strong>
     </div>
   );
 }
 
-function SummaryItem({ label, value }: { label: string; value: string }) {
+function DashboardView({ leads, tasks, campaigns, workspace }: { leads: Lead[]; tasks: Task[]; campaigns: Campaign[]; workspace: Workspace }) {
+  const won = leads.filter((lead) => lead.stage === "won").length;
+  const conversion = leads.length ? Math.round((won / leads.length) * 100) : 0;
+  const slaRisk = leads.filter((lead) => lead.unreadCount > 0).length;
   return (
-    <div>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function QuickActions({
-  pipelineStages,
-  stageFilter,
-  sourceFilter,
-  ownerFilter,
-  onStageFilterChange,
-  onSourceFilterChange,
-  onOwnerFilterChange,
-  onQuickReply,
-  onCreateTask,
-  onCreateDeal,
-}: {
-  pipelineStages: PipelineStageConfig[];
-  stageFilter: "all" | Conversation["stage"];
-  sourceFilter: "all" | Conversation["source"];
-  ownerFilter: string;
-  onStageFilterChange: (stage: "all" | Conversation["stage"]) => void;
-  onSourceFilterChange: (source: "all" | Conversation["source"]) => void;
-  onOwnerFilterChange: (owner: string) => void;
-  onQuickReply: (reply: string) => void;
-  onCreateTask: () => void;
-  onCreateDeal: () => void;
-}) {
-  return (
-    <>
-      <section>
-        <div className="compactHeading">
-          <h2>Acciones rapidas</h2>
-          <Zap size={18} />
+    <section className="grid grid-cols-[1.35fr_.65fr] gap-3 max-xl:grid-cols-1">
+      <div className={cn(panel, "p-3")}>
+        <PanelTitle eyebrow="Control comercial" title="Resumen del cliente" />
+        <div className="grid grid-cols-4 gap-2 max-lg:grid-cols-2">
+          <Stat label="Conversion" value={`${conversion}%`} />
+          <Stat label="SLA riesgo" value={`${slaRisk}`} />
+          <Stat label="Tareas" value={`${tasks.filter((task) => !task.completed).length}`} />
+          <Stat label="Meta" value={statusText(workspace.metaStatus)} />
         </div>
-        <div className="actionStack">
-          <button onClick={() => onQuickReply(quickReplyOptions[0])}>
-            <MessageCircle size={18} />
-            Plantilla WhatsApp
-          </button>
-          <button onClick={onCreateTask}>
-            <CalendarClock size={18} />
-            Agendar seguimiento
-          </button>
-          <button onClick={onCreateDeal}>
-            <CircleDollarSign size={18} />
-            Crear oportunidad
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <div className="compactHeading">
-          <h2>Filtros</h2>
-          <Filter size={18} />
-        </div>
-        <div className="filterStack">
-          <label>
-            Estado
-            <select value={stageFilter} onChange={(event) => onStageFilterChange(event.target.value as "all" | Conversation["stage"])}>
-              <option value="all">Todos</option>
-              {pipelineStages.map((stage) => (
-                <option key={stage.id} value={stage.id}>
-                  {stage.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Fuente
-            <select value={sourceFilter} onChange={(event) => onSourceFilterChange(event.target.value as "all" | Conversation["source"])}>
-              <option value="all">Todas</option>
-              {sourceOptions.map((source) => (
-                <option key={source.value} value={source.value}>
-                  {source.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Asesor
-            <select value={ownerFilter} onChange={(event) => onOwnerFilterChange(event.target.value)}>
-              <option value="all">Todos</option>
-              {ownerOptions.map((owner) => (
-                <option key={owner} value={owner}>
-                  {owner}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </section>
-
-    </>
-  );
-}
-
-function DashboardView({
-  campaigns,
-  conversations,
-  customers,
-  activities,
-  summary,
-}: {
-  campaigns: CampaignSource[];
-  conversations: Conversation[];
-  customers: Customer[];
-  activities: Activity[];
-  summary: Summary | null;
-}) {
-  const { unread, won, conversion, pendingTasks, newLeads } = getDashboardStats({
-    conversations,
-    activities,
-  });
-
-  return (
-    <section className="dashboardGrid">
-      <article className="widePanel dashboardMain">
-        <PanelHeading eyebrow="Control general" title="Resumen comercial" />
-        <div className="insightGrid">
-          <Metric label="Leads nuevos" value={`${newLeads}`} detail="Desde WhatsApp, Meta y organico" />
-          <Metric label="Pendientes" value={`${unread}`} detail="Mensajes sin leer" />
-          <Metric label="Ventas cerradas" value={`${won}`} detail={`${conversion}% de conversion mock`} />
-          <Metric label="Tareas" value={`${pendingTasks}`} detail="Seguimientos activos" />
-        </div>
-        <div className="chartList">
+        <div className="mt-3 grid gap-2">
           {campaigns.map((campaign) => (
-            <div className="chartRow" key={campaign.id}>
-              <span>{campaign.name}</span>
-              <div>
-                <i style={{ width: `${Math.min(100, campaign.leads)}%` }} />
+            <div key={campaign.id} className="grid grid-cols-[180px_1fr_60px] items-center gap-3 rounded-lg bg-[var(--surface-muted)] p-2 text-sm">
+              <span className="font-bold">{campaign.name}</span>
+              <div className="h-2 overflow-hidden rounded-full bg-[var(--brand-soft)]">
+                <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${Math.min(100, campaign.conversion * 2)}%` }} />
               </div>
               <strong>{campaign.leads}</strong>
             </div>
           ))}
         </div>
-      </article>
-
-      <aside className="widePanel dashboardAside">
-        <PanelHeading eyebrow="Separacion de datos" title="Operacion SaaS" />
-        <div className="settingsList">
-          <SummaryItem label="Empresas" value={`${summary?.totalWorkspaces ?? 0}`} />
-          <SummaryItem label="Contactos CRM" value={`${customers.length}`} />
-          <SummaryItem label="Conversaciones" value={`${conversations.length}`} />
-          <SummaryItem label="Pipeline cliente" value={money(getPipelineValue(conversations))} />
+      </div>
+      <div className={cn(panel, "p-3")}>
+        <PanelTitle eyebrow="Proximas acciones" title="Agenda WhatsApp" />
+        <div className="grid gap-2">
+          {tasks.slice(0, 5).map((task) => (
+            <TaskCard key={task.id} task={task} lead={leads.find((lead) => lead.id === task.leadId)} onComplete={() => undefined} compact />
+          ))}
         </div>
-      </aside>
+      </div>
     </section>
   );
 }
@@ -1867,35 +895,30 @@ function ClientsView({
   onCreate: () => void;
 }) {
   return (
-    <section className="widePanel">
-      <div className="panelHeading">
-        <div>
-          <p className="eyebrow">Multiempresa</p>
-          <h2>Clientes de la agencia</h2>
-        </div>
-        <button className="primaryButton" onClick={onCreate}>
-          <Building2 size={18} />
-          Crear empresa
-        </button>
+    <section className={cn(panel, "p-3")}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <PanelTitle eyebrow="Multiempresa" title="Clientes de la agencia" />
+        <Button label="Crear empresa" icon={Building2} onClick={onCreate} />
       </div>
-      <div className="clientGrid">
+      <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-md:grid-cols-1">
         {workspaces.map((workspace) => (
           <button
-            className={`clientCard ${workspace.id === selectedWorkspaceId ? "selectedClient" : ""}`}
             key={workspace.id}
             onClick={() => onSelect(workspace.id)}
+            className={cn(
+              "rounded-lg border bg-[var(--surface)] p-3 text-left transition hover:border-[var(--accent)]",
+              selectedWorkspaceId === workspace.id ? "border-[var(--accent)] ring-2 ring-[var(--brand-soft)]" : "border-[var(--line)]",
+            )}
           >
-            <div className="rowBetween">
-              <div className="avatar">{initials(workspace.name)}</div>
-              <span className="statusPill">{workspace.health}% salud</span>
+            <div className="flex items-center justify-between">
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--brand-soft)] font-black text-[var(--brand)]">
+                {initials(workspace.name)}
+              </div>
+              <span className="rounded-full bg-[var(--brand-soft)] px-2 py-1 text-xs font-black text-[var(--brand)]">{statusText(workspace.whatsappStatus)}</span>
             </div>
-            <strong>{workspace.name}</strong>
-            <span>{workspace.industry}</span>
-            <small>{workspace.phone} - {workspace.owner}</small>
-            <div className="leadSummary compact">
-              <SummaryItem label="WhatsApp" value={statusLabel(workspace.whatsappStatus)} />
-              <SummaryItem label="Meta" value={statusLabel(workspace.metaStatus)} />
-            </div>
+            <strong className="mt-3 block">{workspace.name}</strong>
+            <span className="mt-1 block text-sm text-[var(--muted)]">{workspace.industry}</span>
+            <small className="mt-2 block text-[var(--muted)]">{workspace.phone}</small>
           </button>
         ))}
       </div>
@@ -1903,157 +926,269 @@ function ClientsView({
   );
 }
 
-function PipelineView({
-  conversations,
-  pipelineStages,
-  onMove,
-  onOpen,
-  onRenameStage,
-  onResetStages,
+function InboxView({
+  leads,
+  selectedLead,
+  workspace,
+  stageFilter,
+  sourceFilter,
+  messageDraft,
+  onStageFilter,
+  onSourceFilter,
+  onSelectLead,
+  onMoveLead,
+  onEditLead,
+  onDeleteLead,
+  onDraftChange,
+  onSend,
+  onQuickMessage,
+  onTask,
+  onCopyPhone,
 }: {
-  conversations: Conversation[];
-  pipelineStages: PipelineStageConfig[];
-  onMove: (conversationId: string, stage: Conversation["stage"]) => void;
-  onOpen: (conversation: Conversation) => void;
-  onRenameStage: (stageId: Conversation["stage"], label: string) => void;
-  onResetStages: () => void;
+  leads: Lead[];
+  selectedLead?: Lead;
+  workspace: Workspace;
+  stageFilter: Stage | "all";
+  sourceFilter: Source | "all";
+  messageDraft: string;
+  onStageFilter: (stage: Stage | "all") => void;
+  onSourceFilter: (source: Source | "all") => void;
+  onSelectLead: (leadId: string) => void;
+  onMoveLead: (leadId: string, stage: Stage) => void;
+  onEditLead: (lead: Lead) => void;
+  onDeleteLead: (leadId: string) => void;
+  onDraftChange: (value: string) => void;
+  onSend: () => void;
+  onQuickMessage: (value: string) => void;
+  onTask: (lead?: Lead, type?: Task["type"]) => void;
+  onCopyPhone: (phone: string) => void;
 }) {
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverStage, setDragOverStage] = useState<Conversation["stage"] | null>(null);
-
-  useEffect(() => {
-    function preventBrowserDrop(event: DragEvent) {
-      if (event.dataTransfer?.types.includes("application/x-jp-lead")) {
-        event.preventDefault();
-      }
-    }
-
-    window.addEventListener("dragover", preventBrowserDrop);
-    window.addEventListener("drop", preventBrowserDrop);
-
-    return () => {
-      window.removeEventListener("dragover", preventBrowserDrop);
-      window.removeEventListener("drop", preventBrowserDrop);
-    };
-  }, []);
-
-  function finishDrop(stage: Conversation["stage"], droppedId?: string) {
-    const conversationId = droppedId || draggingId;
-
-    if (!conversationId) return;
-
-    const draggedConversation = conversations.find((conversation) => conversation.id === conversationId);
-    setDraggingId(null);
-    setDragOverStage(null);
-
-    if (draggedConversation && draggedConversation.stage !== stage) {
-      onMove(conversationId, stage);
-    }
-  }
-
   return (
-    <section className="widePanel">
-      <PanelHeading eyebrow="Ventas" title="Pipeline por etapa" />
-      <div className="stageEditor" aria-label="Editar etapas del pipeline">
-        <strong>Etapas</strong>
-        {pipelineStages.map((stage) => (
-          <label key={stage.id}>
-            <span className={`stageDot ${stage.color}`} />
-            <input
-              value={stage.label}
-              onChange={(event) => onRenameStage(stage.id, event.target.value)}
-              aria-label={`Nombre de etapa ${stage.label}`}
-            />
-          </label>
-        ))}
-        <button className="miniButton" onClick={onResetStages}>
-          Restaurar
-        </button>
-      </div>
-      <div className="kanbanGrid">
-        {pipelineStages.map((stage) => {
-          const stageConversations = conversations.filter((conversation) => conversation.stage === stage.id);
-          const amount = stageConversations.reduce((total, conversation) => total + conversation.estimatedValue, 0);
-
-          return (
-            <article
-              className={`kanbanColumn ${dragOverStage === stage.id ? "dropActive" : ""}`}
-              key={stage.id}
-              onDragOver={(event) => {
-                if (event.dataTransfer.types.includes("application/x-jp-lead")) {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                  if (dragOverStage !== stage.id) {
-                    setDragOverStage(stage.id);
-                  }
-                }
-              }}
-              onDragLeave={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                  setDragOverStage(null);
-                }
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                const droppedId =
-                  event.dataTransfer.getData("application/x-jp-lead") ||
-                  event.dataTransfer.getData("text/plain");
-                finishDrop(stage.id, droppedId);
-              }}
+    <section className="grid grid-cols-[290px_minmax(360px,1fr)_280px] gap-3 max-2xl:grid-cols-[270px_minmax(360px,1fr)] max-lg:grid-cols-1">
+      <div className={cn(panel, "overflow-hidden")}>
+        <div className="border-b border-[var(--line)] p-3">
+          <PanelTitle eyebrow="WhatsApp" title="Conversaciones" />
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <select className={input} value={stageFilter} onChange={(event) => onStageFilter(event.target.value as Stage | "all")}>
+              <option value="all">Todas</option>
+              {stageOrder.map((stage) => (
+                <option key={stage} value={stage}>
+                  {workspace.stageLabels[stage]}
+                </option>
+              ))}
+            </select>
+            <select className={input} value={sourceFilter} onChange={(event) => onSourceFilter(event.target.value as Source | "all")}>
+              <option value="all">Origen</option>
+              {sourceOptions.map((source) => (
+                <option key={source} value={source}>
+                  {sourceLabels[source]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="max-h-[calc(100vh-250px)] overflow-auto">
+          {leads.map((lead) => (
+            <button
+              key={lead.id}
+              onClick={() => onSelectLead(lead.id)}
+              className={cn(
+                "grid w-full grid-cols-[34px_1fr_auto] gap-2 border-b border-[var(--line)] px-3 py-2 text-left hover:bg-[var(--surface-muted)]",
+                selectedLead?.id === lead.id && "bg-[var(--brand-soft)]",
+              )}
             >
-              <div className="kanbanHeader">
-                <div className={`stageDot ${stage.color}`} />
-                <strong>{stage.label}</strong>
-                <span>{stageConversations.length}</span>
+              <div className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--surface-muted)] text-xs font-black text-[var(--brand)]">
+                {initials(lead.contactName)}
               </div>
-              <small>{money(amount)} estimados</small>
-              {stageConversations.map((conversation) => (
+              <div className="min-w-0">
+                <strong className="block truncate text-sm">{lead.contactName}</strong>
+                <p className="truncate text-xs text-[var(--muted)]">{lead.service}</p>
+                <span className="text-xs text-[var(--muted)]">{sourceLabels[lead.source]}</span>
+              </div>
+              {lead.unreadCount > 0 && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[var(--accent)] px-1 text-xs font-black text-white">{lead.unreadCount}</span>}
+            </button>
+          ))}
+          {!leads.length && <div className="p-4 text-sm font-bold text-[var(--muted)]">No hay leads con estos filtros.</div>}
+        </div>
+      </div>
+
+      <div className={cn(panel, "overflow-hidden")}>
+        {selectedLead ? (
+          <>
+            <div className="flex items-center justify-between gap-2 border-b border-[var(--line)] p-3">
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-black">{selectedLead.contactName}</h2>
+                <p className="text-sm text-[var(--muted)]">
+                  {workspace.stageLabels[selectedLead.stage]} · {selectedLead.owner} · {selectedLead.phone}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <select className={cn(input, "w-40")} value={selectedLead.stage} onChange={(event) => onMoveLead(selectedLead.id, event.target.value as Stage)}>
+                  {stageOrder.map((stage) => (
+                    <option key={stage} value={stage}>
+                      {workspace.stageLabels[stage]}
+                    </option>
+                  ))}
+                </select>
+                <IconButton icon={PhoneCall} label="Llamar" onClick={() => onCopyPhone(selectedLead.phone)} />
+                <IconButton icon={Edit3} label="Editar" onClick={() => onEditLead(selectedLead)} />
+              </div>
+            </div>
+            <div className="flex min-h-[300px] flex-col gap-2 bg-[var(--surface-muted)] p-3">
+              {selectedLead.messages.map((message) => (
                 <div
-                  className={`dealCard draggableDeal ${draggingId === conversation.id ? "dragging" : ""}`}
-                  draggable
-                  key={conversation.id}
-                  title="Arrastra esta tarjeta para mover el lead"
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("application/x-jp-lead", conversation.id);
-                    setDraggingId(conversation.id);
-                  }}
-                  onDragEnd={() => {
-                    setDraggingId(null);
-                    setDragOverStage(null);
-                  }}
+                  key={message.id}
+                  className={cn(
+                    "max-w-[82%] rounded-lg border border-[var(--line)] px-3 py-2 text-sm",
+                    message.direction === "outbound"
+                      ? "ml-auto bg-[var(--bubble-agent)]"
+                      : message.direction === "system"
+                        ? "mx-auto bg-[var(--surface)] text-xs text-[var(--muted)]"
+                        : "bg-[var(--bubble-user)]",
+                  )}
                 >
-                  <div className="dealCardHeader">
-                    <span className="dragHandle" aria-hidden="true">
-                      <GripVertical size={15} />
-                    </span>
-                    <strong>{conversation.contactName}</strong>
-                  </div>
-                  <span>{conversation.intent}</span>
-                  <div className="rowBetween">
-                    <small>{sourceLabel(conversation.source)}</small>
-                    <b>{money(conversation.estimatedValue)}</b>
-                  </div>
-                  <div className="cardActions">
-                    <button onClick={() => onOpen(conversation)}>
-                      <Eye size={15} />
-                      Ver
-                    </button>
-                    <select
-                      value={conversation.stage}
-                      onChange={(event) => onMove(conversation.id, event.target.value as Conversation["stage"])}
-                      aria-label={`Mover a etapa ${conversation.contactName}`}
-                    >
-                      {pipelineStages.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {message.body}
                 </div>
               ))}
-            </article>
+            </div>
+            <LeadProfile lead={selectedLead} onEdit={() => onEditLead(selectedLead)} />
+            <div className="border-t border-[var(--line)] p-3">
+              <div className="mb-2 flex flex-wrap gap-2">
+                {[
+                  "Hola, gracias por escribirnos. Te ayudo por aqui.",
+                  "Te envio requisitos y precio por WhatsApp.",
+                  "Puedo agendarte una llamada con un asesor.",
+                ].map((reply) => (
+                  <button key={reply} className="rounded-full border border-[var(--line)] px-3 py-1 text-xs font-bold text-[var(--muted)] hover:text-[var(--brand)]" onClick={() => onQuickMessage(reply)}>
+                    {reply}
+                  </button>
+                ))}
+              </div>
+              <form
+                className="flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onSend();
+                }}
+              >
+                <input className={input} placeholder="Responder por WhatsApp o usar plantilla aprobada" value={messageDraft} onChange={(event) => onDraftChange(event.target.value)} />
+                <button className="grid h-9 w-10 place-items-center rounded-lg bg-[var(--accent)] text-white" type="submit" aria-label="Enviar">
+                  <Send size={16} />
+                </button>
+              </form>
+            </div>
+          </>
+        ) : (
+          <div className="grid min-h-80 place-items-center p-6 text-sm font-bold text-[var(--muted)]">Selecciona un lead.</div>
+        )}
+      </div>
+
+      <div className={cn(panel, "grid content-start gap-2 p-3 max-2xl:col-span-2 max-lg:col-span-1")}>
+        <PanelTitle eyebrow="Acciones" title="Operacion WhatsApp" />
+        <ActionButton icon={MessageCircle} label="Enviar plantilla" onClick={() => onQuickMessage("Plantilla aprobada: gracias por escribirnos, necesitamos estos datos para ayudarte.")} />
+        <ActionButton icon={CalendarClock} label="Agendar seguimiento" onClick={() => onTask(selectedLead, "follow_up")} />
+        <ActionButton icon={CheckCircle2} label="Marcar cita agendada" onClick={() => selectedLead && onMoveLead(selectedLead.id, "appointment_scheduled")} />
+        <ActionButton icon={UserRoundPlus} label="Pasar a humano" onClick={() => selectedLead && onTask(selectedLead, "call")} />
+        <ActionButton icon={CircleDollarSign} label="Cerrar como ganado" onClick={() => selectedLead && onMoveLead(selectedLead.id, "won")} />
+        <ActionButton icon={Trash2} label="Eliminar lead" danger onClick={() => selectedLead && onDeleteLead(selectedLead.id)} />
+      </div>
+    </section>
+  );
+}
+
+function LeadProfile({ lead, onEdit }: { lead: Lead; onEdit: () => void }) {
+  return (
+    <div className="border-t border-[var(--line)] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase text-[var(--brand)]">Ficha del lead</p>
+          <strong>{lead.whatsappName || lead.contactName}</strong>
+        </div>
+        <button onClick={onEdit} className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] px-2 py-1 text-xs font-black text-[var(--muted)]">
+          <Edit3 size={13} />
+          Editar
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-sm max-lg:grid-cols-2 max-sm:grid-cols-1">
+        <Info label="Nombre WhatsApp" value={lead.whatsappName || lead.contactName} />
+        <Info label="Telefono" value={lead.phone} />
+        <Info label="Servicio" value={lead.service} />
+        <Info label="Presupuesto" value={money(lead.budget)} />
+        <Info label="Vive / sale de" value={lead.location || "Sin registrar"} />
+        <Info label="Fechas" value={leadDates(lead)} />
+      </div>
+      {lead.notes && <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{lead.notes}</p>}
+    </div>
+  );
+}
+
+function PipelineView({
+  leads,
+  workspace,
+  draggedLeadId,
+  onDragStart,
+  onDrop,
+  onOpen,
+  onStageNameChange,
+}: {
+  leads: Lead[];
+  workspace: Workspace;
+  draggedLeadId: string | null;
+  onDragStart: (leadId: string) => void;
+  onDrop: (stage: Stage) => void;
+  onOpen: (lead: Lead) => void;
+  onStageNameChange: (stage: Stage, label: string) => void;
+}) {
+  return (
+    <section className={cn(panel, "p-3")}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <PanelTitle eyebrow="Embudo editable" title="Pipeline por etapa" />
+        <span className="text-xs font-bold text-[var(--muted)]">Arrastra una tarjeta completa entre etapas</span>
+      </div>
+      <div className="mb-3 grid grid-cols-6 gap-2 max-xl:grid-cols-3 max-md:grid-cols-2">
+        {stageOrder.map((stage) => (
+          <input key={stage} className={input} value={workspace.stageLabels[stage]} onChange={(event) => onStageNameChange(stage, event.target.value)} />
+        ))}
+      </div>
+      <div className="grid grid-cols-6 gap-2 overflow-x-auto max-xl:grid-cols-3 max-md:grid-cols-1">
+        {stageOrder.map((stage) => {
+          const stageLeads = leads.filter((lead) => lead.stage === stage);
+          return (
+            <div
+              key={stage}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => onDrop(stage)}
+              className={cn(
+                "min-h-[360px] rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-2",
+                draggedLeadId && "ring-2 ring-[var(--brand-soft)]",
+              )}
+            >
+              <div className="mb-2 flex items-center justify-between">
+                <strong className="text-sm">{workspace.stageLabels[stage]}</strong>
+                <span className="rounded-full bg-[var(--surface)] px-2 py-1 text-xs font-black text-[var(--muted)]">{stageLeads.length}</span>
+              </div>
+              <div className="grid gap-2">
+                {stageLeads.map((lead) => (
+                  <button
+                    key={lead.id}
+                    draggable
+                    onDragStart={() => onDragStart(lead.id)}
+                    onClick={() => onOpen(lead)}
+                    className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 text-left shadow-sm transition hover:border-[var(--accent)]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <strong className="text-sm">{lead.contactName}</strong>
+                      <span className={priorityClass(lead.priority)}>{lead.priority}</span>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{lead.service}</p>
+                    <div className="mt-2 flex items-center justify-between text-xs font-bold">
+                      <span>{sourceLabels[lead.source]}</span>
+                      <span>{money(lead.budget)}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -2061,78 +1196,36 @@ function PipelineView({
   );
 }
 
-function ContactsView({
-  conversations,
-  customers,
-  onOpen,
-  onEdit,
-  onDelete,
-}: {
-  conversations: Conversation[];
-  customers: Customer[];
-  onOpen: (conversation: Conversation) => void;
-  onEdit: (conversation: Conversation) => void;
-  onDelete: (conversationId: string) => void;
-}) {
+function ContactsView({ leads, workspace, onEdit, onDelete }: { leads: Lead[]; workspace: Workspace; onEdit: (lead: Lead) => void; onDelete: (leadId: string) => void }) {
   return (
-    <section className="widePanel">
-      <PanelHeading eyebrow="Base de datos" title="Contactos y leads" />
-      <div className="tableWrap">
-        <table>
-          <thead>
+    <section className={cn(panel, "overflow-hidden")}>
+      <div className="border-b border-[var(--line)] p-3">
+        <PanelTitle eyebrow="Base del cliente" title="Contactos y oportunidades" />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[880px] text-left text-sm">
+          <thead className="bg-[var(--surface-muted)] text-xs uppercase text-[var(--muted)]">
             <tr>
-              <th>Contacto</th>
-              <th>Telefono</th>
-              <th>Etiqueta</th>
-              <th>Origen</th>
-              <th>Responsable</th>
-              <th>Proxima accion</th>
-              <th>Acciones</th>
+              <th className="px-3 py-2">Contacto</th>
+              <th className="px-3 py-2">WhatsApp</th>
+              <th className="px-3 py-2">Servicio</th>
+              <th className="px-3 py-2">Etapa</th>
+              <th className="px-3 py-2">Presupuesto</th>
+              <th className="px-3 py-2">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {customers.map((customer) => (
-              <tr key={customer.id}>
-                <td>
-                  <strong>{customer.contactName}</strong>
-                  <br />
-                  <small>{customer.companyName}</small>
-                </td>
-                <td>{customer.phone}</td>
-                <td>
-                  <span className="statusPill">{leadStatusLabel(customer.status)}</span>
-                </td>
-                <td>{customer.source}</td>
-                <td>{customer.owner}</td>
-                <td>{relativeTime(customer.updatedAt)}</td>
-                <td>
-                  <span className="statusPill">CRM</span>
-                </td>
-              </tr>
-            ))}
-            {conversations.map((conversation) => (
-              <tr key={conversation.id}>
-                <td>
-                  <strong>{conversation.contactName}</strong>
-                </td>
-                <td>{conversation.contactPhone}</td>
-                <td>
-                  <span className="statusPill">{stageLabel(conversation.stage)}</span>
-                </td>
-                <td>{sourceLabel(conversation.source)}</td>
-                <td>{conversation.owner}</td>
-                <td>{relativeTime(conversation.lastMessageAt)}</td>
-                <td>
-                  <div className="tableActions">
-                    <button onClick={() => onOpen(conversation)} aria-label={`Ver ${conversation.contactName}`}>
-                      <Eye size={15} />
-                    </button>
-                    <button onClick={() => onEdit(conversation)} aria-label={`Editar ${conversation.contactName}`}>
-                      <Edit3 size={15} />
-                    </button>
-                    <button onClick={() => onDelete(conversation.id)} aria-label={`Eliminar ${conversation.contactName}`}>
-                      <Trash2 size={15} />
-                    </button>
+            {leads.map((lead) => (
+              <tr key={lead.id} className="border-t border-[var(--line)]">
+                <td className="px-3 py-2 font-bold">{lead.contactName}</td>
+                <td className="px-3 py-2 text-[var(--muted)]">{lead.phone}</td>
+                <td className="px-3 py-2">{lead.service}</td>
+                <td className="px-3 py-2">{workspace.stageLabels[lead.stage]}</td>
+                <td className="px-3 py-2 font-bold">{money(lead.budget)}</td>
+                <td className="px-3 py-2">
+                  <div className="flex gap-1">
+                    <IconButton icon={Edit3} label="Editar" onClick={() => onEdit(lead)} />
+                    <IconButton icon={Trash2} label="Eliminar" onClick={() => onDelete(lead.id)} />
                   </div>
                 </td>
               </tr>
@@ -2144,66 +1237,61 @@ function ContactsView({
   );
 }
 
-function TasksView({
-  activities,
-  customers,
-  conversations,
-  onCreate,
-  onComplete,
-  onOpenConversation,
-}: {
-  activities: Activity[];
-  customers: Customer[];
-  conversations: Conversation[];
-  onCreate: () => void;
-  onComplete: (activityId: string) => void;
-  onOpenConversation: (conversation: Conversation) => void;
-}) {
-  const followUps = conversations
-    .filter((conversation) => conversation.stage === "follow_up" || conversation.unreadCount > 0)
-    .slice(0, 6);
-
+function TasksView({ tasks, leads, onCreate, onComplete }: { tasks: Task[]; leads: Lead[]; onCreate: () => void; onComplete: (taskId: string) => void }) {
   return (
-    <section className="widePanel">
-      <div className="panelHeading">
-        <div>
-          <p className="eyebrow">Seguimiento</p>
-          <h2>Tareas y proximas acciones</h2>
-        </div>
-        <button className="primaryButton" onClick={onCreate}>
-          <CalendarClock size={18} />
-          Nueva tarea
+    <section className={cn(panel, "p-3")}>
+      <div className="mb-3 flex items-center justify-between">
+        <PanelTitle eyebrow="Seguimientos" title="Tareas comerciales" />
+        <Button icon={CalendarClock} label="Nueva tarea" onClick={onCreate} />
+      </div>
+      <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-md:grid-cols-1">
+        {tasks.map((task) => (
+          <TaskCard key={task.id} task={task} lead={leads.find((lead) => lead.id === task.leadId)} onComplete={() => onComplete(task.id)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TaskCard({ task, lead, onComplete, compact = false }: { task: Task; lead?: Lead; onComplete: () => void; compact?: boolean }) {
+  return (
+    <article className={cn("rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-3", compact && "p-2")}>
+      <span className={task.completed ? "rounded-full bg-slate-200 px-2 py-1 text-xs font-black text-slate-600" : "rounded-full bg-[var(--brand-soft)] px-2 py-1 text-xs font-black text-[var(--brand)]"}>
+        {task.completed ? "Completada" : task.type}
+      </span>
+      <strong className="mt-2 block">{task.title}</strong>
+      <p className="mt-1 text-sm text-[var(--muted)]">{lead?.contactName ?? "Sin lead asignado"}</p>
+      <small className="mt-2 block text-[var(--muted)]">{task.dueDate || "Sin fecha"}</small>
+      {!task.completed && !compact && (
+        <button onClick={onComplete} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-1 text-xs font-black text-[var(--muted)]">
+          <CheckCircle2 size={14} />
+          Completar
         </button>
-      </div>
-      <div className="taskGrid">
-        {activities.map((activity) => {
-          const customer = customers.find((item) => item.id === activity.customerId);
-          return (
-            <article className="taskCard" key={activity.id}>
-              <span className={activity.completedAt ? "inactiveBadge" : "activeBadge"}>
-                {activity.completedAt ? "Completada" : taskState(activity.dueDate)}
-              </span>
-              <strong>{activity.title}</strong>
-              <p>{customer?.contactName ?? "Lead CRM"} - {activity.notes ?? "Sin notas internas"}</p>
-              <small>{activity.dueDate ? new Date(activity.dueDate).toLocaleDateString("es-EC") : "Sin fecha"}</small>
-              {!activity.completedAt && (
-                <button className="miniButton" onClick={() => onComplete(activity.id)}>
-                  <CheckCircle2 size={15} />
-                  Completar
-                </button>
-              )}
-            </article>
-          );
-        })}
-        {followUps.map((conversation) => (
-          <article className="taskCard" key={conversation.id}>
-            <span className="activeBadge">WhatsApp pendiente</span>
-            <strong>Responder a {conversation.contactName}</strong>
-            <p>{conversation.intent}</p>
-            <small>{relativeTime(conversation.lastMessageAt)}</small>
-            <button className="miniButton" onClick={() => onOpenConversation(conversation)}>
-              <Inbox size={15} />
-              Abrir chat
+      )}
+    </article>
+  );
+}
+
+function CampaignsView({ campaigns, onFilter }: { campaigns: Campaign[]; onFilter: (source: Source) => void }) {
+  return (
+    <section className={cn(panel, "p-3")}>
+      <PanelTitle eyebrow="Meta y contenido" title="Campanas que alimentan WhatsApp" />
+      <div className="mt-3 grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-md:grid-cols-1">
+        {campaigns.map((campaign) => (
+          <article key={campaign.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-3">
+            <div className="flex items-center justify-between">
+              <Megaphone className="text-[var(--brand)]" size={18} />
+              <span className="rounded-full bg-[var(--surface)] px-2 py-1 text-xs font-black text-[var(--muted)]">{sourceLabels[campaign.source]}</span>
+            </div>
+            <strong className="mt-3 block">{campaign.name}</strong>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <Info label="Leads" value={`${campaign.leads}`} />
+              <Info label="Gasto" value={money(campaign.spend)} />
+              <Info label="Conv." value={`${campaign.conversion}%`} />
+            </div>
+            <button className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-1 text-xs font-black text-[var(--muted)]" onClick={() => onFilter(campaign.source)}>
+              <Filter size={14} />
+              Ver leads
             </button>
           </article>
         ))}
@@ -2212,237 +1300,68 @@ function TasksView({
   );
 }
 
-function CampaignsView({
-  sources,
-  onOpenSource,
-}: {
-  sources: CampaignSource[];
-  onOpenSource: (source: CampaignSource) => void;
-}) {
+function AutomationsView({ automations, workspace, onToggle }: { automations: Automation[]; workspace: Workspace; onToggle: (automationId: string) => void }) {
   return (
-    <section className="widePanel">
-      <PanelHeading eyebrow="Meta y organico" title="Fuentes de adquisicion" />
-      <div className="sourceGrid">
-        {sources.map((source) => (
-          <article className="sourceCard" key={source.id}>
-            <Megaphone size={20} />
-            <strong>{source.name}</strong>
-            <div className="sourceMetrics">
-              <SummaryItem label="Leads" value={`${source.leads}`} />
-              <SummaryItem label="CPL" value={money(source.costPerLead)} />
-              <SummaryItem label="Conversion" value={`${source.conversionRate}%`} />
-              <SummaryItem label="Gasto" value={money(source.spend)} />
-            </div>
-            <button className="miniButton" onClick={() => onOpenSource(source)}>
-              <Filter size={15} />
-              Filtrar leads
-            </button>
-          </article>
-        ))}
+    <section className="grid grid-cols-[.9fr_1.1fr] gap-3 max-xl:grid-cols-1">
+      <div className={cn(panel, "p-3")}>
+        <PanelTitle eyebrow="Chatbot / salesbot" title="Motor automatico WhatsApp" />
+        <div className="mt-3 grid gap-2">
+          <Info label="Modo" value="Ventas + calificacion" />
+          <Info label="Plantilla inicial" value="bienvenida_lead" />
+          <Info label="Traspaso humano" value="asesor, cita, precio final, reclamo" />
+        </div>
+        <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-3">
+          <strong>Flujo recomendado</strong>
+          <ol className="mt-2 grid gap-2 text-sm text-[var(--muted)]">
+            <li>1. Recibir lead desde Meta o WhatsApp.</li>
+            <li>2. Pedir servicio, ciudad, fechas y presupuesto.</li>
+            <li>3. Crear tarea si no responde en 4 horas.</li>
+            <li>4. Pasar a humano si pide compra, precio final o reclamo.</li>
+          </ol>
+        </div>
       </div>
-    </section>
-  );
-}
-
-function AutomationsView({
-  automations,
-  botConfig,
-  followUpRules,
-  pipelineStages,
-  onToggle,
-  onBotConfigChange,
-  onFollowUpRulesChange,
-}: {
-  automations: AutomationRule[];
-  botConfig: BotConfig;
-  followUpRules: FollowUpRule[];
-  pipelineStages: PipelineStageConfig[];
-  onToggle: (automation: AutomationRule) => void;
-  onBotConfigChange: (config: BotConfig) => void;
-  onFollowUpRulesChange: (rules: FollowUpRule[]) => void;
-}) {
-  const updateBotConfig = (partial: Partial<BotConfig>) => {
-    onBotConfigChange({ ...botConfig, ...partial });
-  };
-  const updateQuestion = (index: number, value: string) => {
-    const nextQuestions = [...botConfig.qualificationQuestions];
-    nextQuestions[index] = value;
-    updateBotConfig({ qualificationQuestions: nextQuestions });
-  };
-  const updateFollowUpRule = (id: string, partial: Partial<FollowUpRule>) => {
-    onFollowUpRulesChange(followUpRules.map((rule) => (rule.id === id ? { ...rule, ...partial } : rule)));
-  };
-  const addFollowUpRule = () => {
-    onFollowUpRulesChange([
-      ...followUpRules,
-      {
-        id: `follow_${Date.now()}`,
-        name: "Nuevo seguimiento",
-        delayHours: 24,
-        stage: "any",
-        message: "Hola, paso por aqui para dar seguimiento. Quieres que avancemos?",
-        active: true,
-      },
-    ]);
-  };
-  const removeFollowUpRule = (id: string) => {
-    onFollowUpRulesChange(followUpRules.filter((rule) => rule.id !== id));
-  };
-
-  return (
-    <section className="widePanel">
-      <PanelHeading eyebrow="WhatsApp CRM" title="Bot y seguimientos" />
-      <div className="automationWorkbench">
-        <article className="botCard">
-          <div className="sectionHeaderCompact">
-            <div>
-              <strong>Salesbot automatico</strong>
-              <span>Responde, califica y pasa a humano.</span>
-            </div>
-            <label className="toggleLine">
-              <input
-                type="checkbox"
-                checked={botConfig.enabled}
-                onChange={(event) => updateBotConfig({ enabled: event.target.checked })}
-              />
-              {botConfig.enabled ? "Activo" : "Pausado"}
-            </label>
-          </div>
-          <div className="botForm">
-            <label>
-              Modo
-              <select value={botConfig.mode} onChange={(event) => updateBotConfig({ mode: event.target.value as BotConfig["mode"] })}>
-                <option value="asistente">Asistente</option>
-                <option value="ventas">Ventas</option>
-                <option value="calificacion">Calificacion</option>
-              </select>
-            </label>
-            <label>
-              Plantilla aprobada
-              <input value={botConfig.templateName} onChange={(event) => updateBotConfig({ templateName: event.target.value })} />
-            </label>
-            <label className="wideField">
-              Objetivo
-              <textarea value={botConfig.objective} onChange={(event) => updateBotConfig({ objective: event.target.value })} rows={2} />
-            </label>
-            <label className="wideField">
-              Mensaje inicial
-              <textarea
-                value={botConfig.welcomeMessage}
-                onChange={(event) => updateBotConfig({ welcomeMessage: event.target.value })}
-                rows={2}
-              />
-            </label>
-            <label className="wideField">
-              Palabras para pasar a humano
-              <input value={botConfig.handoffKeywords} onChange={(event) => updateBotConfig({ handoffKeywords: event.target.value })} />
-            </label>
-          </div>
-          <div className="questionList">
-            <strong>Preguntas de calificacion</strong>
-            {botConfig.qualificationQuestions.map((question, index) => (
-              <input key={`${index}-${question}`} value={question} onChange={(event) => updateQuestion(index, event.target.value)} />
-            ))}
-          </div>
-        </article>
-
-        <article className="followupCard">
-          <div className="sectionHeaderCompact">
-            <div>
-              <strong>Seguimientos automaticos</strong>
-              <span>Mensajes por etapa y tiempo sin respuesta.</span>
-            </div>
-            <button className="miniButton" onClick={addFollowUpRule}>
-              <Plus size={14} />
-              Agregar
-            </button>
-          </div>
-          <div className="followupStack">
-            {followUpRules.map((rule) => (
-              <div className="followupRule" key={rule.id}>
-                <label className="toggleLine">
-                  <input
-                    type="checkbox"
-                    checked={rule.active}
-                    onChange={(event) => updateFollowUpRule(rule.id, { active: event.target.checked })}
-                  />
-                </label>
-                <input value={rule.name} onChange={(event) => updateFollowUpRule(rule.id, { name: event.target.value })} />
-                <input
-                  type="number"
-                  min="1"
-                  value={rule.delayHours}
-                  onChange={(event) => updateFollowUpRule(rule.id, { delayHours: Number(event.target.value) || 1 })}
-                />
-                <select value={rule.stage} onChange={(event) => updateFollowUpRule(rule.id, { stage: event.target.value as FollowUpRule["stage"] })}>
-                  <option value="any">Cualquier etapa</option>
-                  {pipelineStages.map((stage) => (
-                    <option key={stage.id} value={stage.id}>
-                      {stage.label}
-                    </option>
-                  ))}
-                </select>
-                <button className="iconButton dangerButton" onClick={() => removeFollowUpRule(rule.id)} aria-label="Eliminar seguimiento">
-                  <Trash2 size={14} />
-                </button>
-                <textarea value={rule.message} onChange={(event) => updateFollowUpRule(rule.id, { message: event.target.value })} rows={2} />
-              </div>
-            ))}
-          </div>
-        </article>
-      </div>
-      <div className="automationGrid">
-        {automations.map((automation) => (
-          <article className="automationCard" key={automation.id}>
-            <div className="automationIcon">
-              <Bot size={18} />
-            </div>
-            <div>
-              <div className="rowBetween">
+      <div className={cn(panel, "p-3")}>
+        <PanelTitle eyebrow={workspace.name} title="Reglas activas" />
+        <div className="mt-3 grid gap-2">
+          {automations.map((automation) => (
+            <article key={automation.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-3">
+              <div>
                 <strong>{automation.name}</strong>
-                <span className={automation.active ? "activeBadge" : "inactiveBadge"}>
-                  {automation.active ? "Activa" : "Pausada"}
-                </span>
+                <p className="mt-1 text-sm text-[var(--muted)]">{automation.trigger}</p>
+                <span className="mt-1 block text-sm font-bold text-[var(--brand)]">{automation.action}</span>
               </div>
-              <p>{automation.trigger}</p>
-              <span>{automation.action}</span>
-              <button className="miniButton" onClick={() => onToggle(automation)}>
-                <Sparkles size={15} />
-                {automation.active ? "Pausar" : "Activar"}
+              <button
+                onClick={() => onToggle(automation.id)}
+                className={cn(
+                  "h-8 rounded-lg px-3 text-xs font-black",
+                  automation.active ? "bg-[var(--accent)] text-white" : "border border-[var(--line)] text-[var(--muted)]",
+                )}
+              >
+                {automation.active ? "Activa" : "Pausada"}
               </button>
-            </div>
-          </article>
-        ))}
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
 }
 
-function IntegrationsView({
-  integrations,
-  onConnect,
-}: {
-  integrations: IntegrationConnection[];
-  onConnect: () => void;
-}) {
+function IntegrationsView({ integrations }: { integrations: Integration[] }) {
   return (
-    <section className="widePanel">
-      <PanelHeading eyebrow="Conexiones" title="Integraciones por cliente" />
-      <div className="integrationGrid">
+    <section className={cn(panel, "p-3")}>
+      <PanelTitle eyebrow="APIs oficiales" title="Integraciones por empresa" />
+      <div className="mt-3 grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-md:grid-cols-1">
         {integrations.map((integration) => (
-          <article className="integrationCard" key={integration.id}>
-            <div className="rowBetween">
-              <PlugZap size={20} />
-              <span className="statusPill">{integrationStatusLabel(integration.status)}</span>
+          <article key={integration.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-3">
+            <div className="flex items-center justify-between">
+              <PlugZap className="text-[var(--brand)]" size={18} />
+              <span className="rounded-full bg-[var(--surface)] px-2 py-1 text-xs font-black text-[var(--muted)]">{statusText(integration.status)}</span>
             </div>
-            <strong>{providerLabel(integration.provider)}</strong>
-            <p>{integration.capabilities.join(", ")}</p>
-            <div className="progressTrack">
-              <div style={{ width: integrationQuality(integration.status) }} />
-            </div>
-            <small>Calidad de conexion {integrationQuality(integration.status)}</small>
-            <button className="miniButton" onClick={onConnect}>
-              <PlugZap size={15} />
+            <strong className="mt-3 block">{integration.name}</strong>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{integration.description}</p>
+            <button className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-1 text-xs font-black text-[var(--muted)]">
+              <Settings size={14} />
               Configurar
             </button>
           </article>
@@ -2454,194 +1373,230 @@ function IntegrationsView({
 
 function SettingsView({
   workspace,
-  integrations,
-  pipelineStages,
-  workspaceTheme,
-  themeMode,
   onThemeChange,
-  onWorkspaceThemeChange,
-  onResetWorkspaceTheme,
-  onEdit,
+  onStageNameChange,
+  onCompanyChange,
 }: {
   workspace: Workspace;
-  integrations: IntegrationConnection[];
-  pipelineStages: PipelineStageConfig[];
-  workspaceTheme: WorkspaceTheme;
-  themeMode: ThemeMode;
-  onThemeChange: (mode: ThemeMode) => void;
-  onWorkspaceThemeChange: (theme: Partial<WorkspaceTheme>) => void;
-  onResetWorkspaceTheme: () => void;
-  onEdit: () => void;
+  onThemeChange: (theme: Partial<WorkspaceTheme>) => void;
+  onStageNameChange: (stage: Stage, label: string) => void;
+  onCompanyChange: (partial: Partial<Workspace>) => void;
 }) {
   return (
-    <section className="settingsGrid">
-      <article className="widePanel">
-        <div className="panelHeading">
+    <section className="grid grid-cols-2 gap-3 max-xl:grid-cols-1">
+      <div className={cn(panel, "p-3")}>
+        <PanelTitle eyebrow="Empresa" title="Datos del cliente" />
+        <div className="mt-3 grid grid-cols-2 gap-2 max-md:grid-cols-1">
+          <Field label="Nombre" value={workspace.name} onChange={(value) => onCompanyChange({ name: value })} />
+          <Field label="Industria" value={workspace.industry} onChange={(value) => onCompanyChange({ industry: value })} />
+          <Field label="Responsable" value={workspace.owner} onChange={(value) => onCompanyChange({ owner: value })} />
+          <Field label="WhatsApp" value={workspace.phone} onChange={(value) => onCompanyChange({ phone: value })} />
+        </div>
+      </div>
+      <div className={cn(panel, "p-3")}>
+        <PanelTitle eyebrow="Perfil visual" title="Colores por empresa" />
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <ColorField label="Principal" value={workspace.theme.primary} onChange={(value) => onThemeChange({ primary: value })} />
+          <ColorField label="Acento" value={workspace.theme.accent} onChange={(value) => onThemeChange({ accent: value })} />
+          <ColorField label="Suave" value={workspace.theme.soft} onChange={(value) => onThemeChange({ soft: value })} />
+        </div>
+        <div className="mt-3 flex items-center justify-between rounded-lg border border-[var(--line)] bg-[var(--brand-soft)] p-3">
           <div>
-            <p className="eyebrow">Empresa activa</p>
-            <h2>Configuracion del cliente</h2>
+            <span className="text-xs font-black uppercase text-[var(--muted)]">Vista previa</span>
+            <strong className="block">{workspace.name}</strong>
           </div>
-          <button className="secondaryButton" onClick={onEdit}>
-            <Edit3 size={18} />
-            Editar
-          </button>
-        </div>
-        <div className="settingsList">
-          <SummaryItem label="Nombre comercial" value={workspace.name} />
-          <SummaryItem label="Industria" value={workspace.industry} />
-          <SummaryItem label="WhatsApp conectado" value={statusLabel(workspace.whatsappStatus)} />
-          <SummaryItem label="Cuenta Meta" value={statusLabel(workspace.metaStatus)} />
-          <SummaryItem label="Horario de atencion" value="Lun-Vie 09:00 a 18:00" />
-          <SummaryItem label="SLA" value={`${workspace.responseSlaMinutes} min`} />
-        </div>
-        <div className="preferenceBlock">
-          <div>
-            <strong>Modo visual</strong>
-            <span>Este modo es de tu estacion; los colores son de la empresa.</span>
-          </div>
-          <ThemeSwitch themeMode={themeMode} onThemeChange={onThemeChange} />
-        </div>
-      </article>
-
-      <article className="widePanel">
-        <div className="panelHeading">
-          <div>
-            <p className="eyebrow">Operativo</p>
-            <h2>Plantillas, etiquetas y embudo</h2>
-          </div>
-          <button className="secondaryButton" onClick={onEdit}>
-            <Settings size={18} />
-            Gestionar
-          </button>
-        </div>
-        <div className="settingsList">
-          <SummaryItem label="Etiquetas" value="Caliente, Cotizando, Cita, Recontactar" />
-          <SummaryItem label="Respuestas rapidas" value="Bienvenida, Precio, Horarios, Ubicacion" />
-          <SummaryItem label="Plantillas WhatsApp" value="bienvenida_lead, recordatorio_cita" />
-          <SummaryItem label="Usuarios asignados" value="Admin agencia, asesor comercial, cliente visualizador" />
-        </div>
-        <div className="stageList">
-          {pipelineStages.map((stage) => (
-            <span className="statusPill" key={stage.id}>{stage.label}</span>
-          ))}
-        </div>
-      </article>
-
-      <article className="widePanel">
-        <div className="panelHeading">
-          <div>
-            <p className="eyebrow">Perfil visual</p>
-            <h2>Colores de {workspace.name}</h2>
-          </div>
-          <button className="secondaryButton" onClick={onResetWorkspaceTheme}>
-            <Sparkles size={18} />
-            Restaurar
-          </button>
-        </div>
-        <div className="themePalette">
-          <label>
-            Principal
-            <input
-              type="color"
-              value={workspaceTheme.primary}
-              onChange={(event) => onWorkspaceThemeChange({ primary: event.target.value })}
-            />
-            <span>{workspaceTheme.primary}</span>
-          </label>
-          <label>
-            Acento
-            <input
-              type="color"
-              value={workspaceTheme.accent}
-              onChange={(event) => onWorkspaceThemeChange({ accent: event.target.value })}
-            />
-            <span>{workspaceTheme.accent}</span>
-          </label>
-          <label>
-            Fondo suave
-            <input
-              type="color"
-              value={workspaceTheme.highlight}
-              onChange={(event) => onWorkspaceThemeChange({ highlight: event.target.value })}
-            />
-            <span>{workspaceTheme.highlight}</span>
-          </label>
-        </div>
-        <div className="brandPreview">
-          <div>
-            <span>Vista previa</span>
-            <strong>{workspace.name}</strong>
-          </div>
-          <button className="primaryButton">
+          <button className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-black text-white">
             <MessageCircle size={16} />
             WhatsApp
           </button>
         </div>
-      </article>
-
-      <article className="widePanel fullSettings">
-        <div className="panelHeading">
-          <div>
-            <p className="eyebrow">Preparado para APIs reales</p>
-            <h2>Conexiones tecnicas</h2>
-          </div>
-          <button className="secondaryButton" onClick={onEdit}>
-            <PlugZap size={18} />
-            Conectar
-          </button>
-        </div>
-        <div className="integrationGrid">
-          {integrations.map((integration) => (
-            <article className="integrationCard" key={integration.id}>
-              <strong>{providerLabel(integration.provider)}</strong>
-              <p>{integration.capabilities.join(", ")}</p>
-              <span className="statusPill">{integrationStatusLabel(integration.status)}</span>
-            </article>
+      </div>
+      <div className={cn(panel, "col-span-2 p-3 max-xl:col-span-1")}>
+        <PanelTitle eyebrow="Pipeline" title="Etapas editables de este cliente" />
+        <div className="mt-3 grid grid-cols-6 gap-2 max-xl:grid-cols-3 max-md:grid-cols-2">
+          {stageOrder.map((stage) => (
+            <Field key={stage} label={defaultStageLabels[stage]} value={workspace.stageLabels[stage]} onChange={(value) => onStageNameChange(stage, value)} />
           ))}
         </div>
-      </article>
+      </div>
     </section>
   );
 }
 
-function ThemeSwitch({
-  themeMode,
-  onThemeChange,
+function LeadModal({
+  form,
+  editing,
+  onChange,
+  onClose,
+  onSave,
 }: {
-  themeMode: ThemeMode;
-  onThemeChange: (mode: ThemeMode) => void;
+  form: LeadForm;
+  editing: boolean;
+  onChange: (form: LeadForm) => void;
+  onClose: () => void;
+  onSave: () => void;
 }) {
-  const nextMode = themeMode === "dark" ? "light" : "dark";
-  const Icon = themeMode === "dark" ? Sun : Moon;
-
   return (
-    <button
-      className="themeToggle"
-      type="button"
-      onClick={() => onThemeChange(nextMode)}
-      aria-label={`Cambiar a modo ${nextMode === "dark" ? "oscuro" : "claro"}`}
-      title={`Modo ${themeMode === "dark" ? "oscuro" : "claro"}`}
-    >
+    <Modal title={editing ? "Editar ficha de lead" : "Nuevo lead WhatsApp"} eyebrow="Ficha personalizable" onClose={onClose}>
+      <div className="grid grid-cols-2 gap-2 max-md:grid-cols-1">
+        <Field label="Nombre" value={form.contactName} onChange={(value) => onChange({ ...form, contactName: value })} />
+        <Field label="Nombre WhatsApp" value={form.whatsappName} onChange={(value) => onChange({ ...form, whatsappName: value })} />
+        <Field label="Telefono WhatsApp" value={form.phone} onChange={(value) => onChange({ ...form, phone: value })} />
+        <label className="grid gap-1 text-[11px] font-black uppercase text-[var(--muted)]">
+          Fuente
+          <select className={input} value={form.source} onChange={(event) => onChange({ ...form, source: event.target.value as Source })}>
+            {sourceOptions.map((source) => (
+              <option key={source} value={source}>
+                {sourceLabels[source]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Field label="Servicio que desea" value={form.service} onChange={(value) => onChange({ ...form, service: value })} />
+        <Field label="Donde vive / sale de" value={form.location} onChange={(value) => onChange({ ...form, location: value })} />
+        <Field label="Fecha inicial" type="date" value={form.desiredStartDate} onChange={(value) => onChange({ ...form, desiredStartDate: value })} />
+        <Field label="Fecha final" type="date" value={form.desiredEndDate} onChange={(value) => onChange({ ...form, desiredEndDate: value })} />
+        <Field label="Presupuesto / pipeline" value={form.budget} onChange={(value) => onChange({ ...form, budget: value })} />
+        <label className="grid gap-1 text-[11px] font-black uppercase text-[var(--muted)]">
+          Prioridad
+          <select className={input} value={form.priority} onChange={(event) => onChange({ ...form, priority: event.target.value as Priority })}>
+            <option value="hot">Alta</option>
+            <option value="warm">Media</option>
+            <option value="cold">Baja</option>
+          </select>
+        </label>
+        <label className="col-span-2 grid gap-1 text-[11px] font-black uppercase text-[var(--muted)] max-md:col-span-1">
+          Notas / detalle
+          <textarea className={textArea} value={form.notes} onChange={(event) => onChange({ ...form, notes: event.target.value })} />
+        </label>
+      </div>
+      <ModalActions onClose={onClose} onSave={onSave} saveLabel={editing ? "Guardar cambios" : "Crear lead"} />
+    </Modal>
+  );
+}
+
+function CompanyModal({
+  form,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  form: { name: string; industry: string; owner: string; phone: string; responseSlaMinutes: string };
+  onChange: (form: { name: string; industry: string; owner: string; phone: string; responseSlaMinutes: string }) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Modal title="Nueva empresa cliente" eyebrow="Caso independiente" onClose={onClose}>
+      <div className="grid grid-cols-2 gap-2 max-md:grid-cols-1">
+        <Field label="Nombre comercial" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
+        <Field label="Industria" value={form.industry} onChange={(value) => onChange({ ...form, industry: value })} />
+        <Field label="Responsable" value={form.owner} onChange={(value) => onChange({ ...form, owner: value })} />
+        <Field label="WhatsApp comercial" value={form.phone} onChange={(value) => onChange({ ...form, phone: value })} />
+        <Field label="SLA minutos" value={form.responseSlaMinutes} onChange={(value) => onChange({ ...form, responseSlaMinutes: value })} />
+      </div>
+      <ModalActions onClose={onClose} onSave={onSave} saveLabel="Crear empresa" />
+    </Modal>
+  );
+}
+
+function Modal({ title, eyebrow, children, onClose }: { title: string; eyebrow: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/55 p-4">
+      <section className="w-full max-w-3xl rounded-lg border border-[var(--line)] bg-[var(--surface)] shadow-calm">
+        <header className="flex items-center justify-between border-b border-[var(--line)] p-4">
+          <div>
+            <p className="text-[11px] font-black uppercase text-[var(--brand)]">{eyebrow}</p>
+            <h2 className="text-lg font-black">{title}</h2>
+          </div>
+          <IconButton icon={MoreHorizontal} label="Cerrar" onClick={onClose} />
+        </header>
+        <div className="p-4">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+function ModalActions({ onClose, onSave, saveLabel }: { onClose: () => void; onSave: () => void; saveLabel: string }) {
+  return (
+    <div className="mt-4 flex justify-end gap-2 border-t border-[var(--line)] pt-4">
+      <button className="rounded-lg border border-[var(--line)] px-4 py-2 text-sm font-black text-[var(--muted)]" onClick={onClose}>
+        Cancelar
+      </button>
+      <button className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-black text-white" onClick={onSave}>
+        <Save size={16} />
+        {saveLabel}
+      </button>
+    </div>
+  );
+}
+
+function PanelTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-black uppercase text-[var(--brand)]">{eyebrow}</p>
+      <h2 className="text-base font-black">{title}</h2>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
+  return (
+    <label className="grid gap-1 text-[11px] font-black uppercase text-[var(--muted)]">
+      {label}
+      <input className={input} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-2 text-[11px] font-black uppercase text-[var(--muted)]">
+      {label}
+      <input className="h-9 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] p-1" type="color" value={value} onChange={(event) => onChange(event.target.value)} />
+      <span className="text-xs normal-case text-[var(--ink)]">{value}</span>
+    </label>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-[var(--surface-muted)] p-2">
+      <span className="block text-[11px] font-black uppercase text-[var(--muted)]">{label}</span>
+      <strong className="mt-1 block break-words text-sm">{value}</strong>
+    </div>
+  );
+}
+
+function IconButton({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) {
+  return (
+    <button className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--brand)]" onClick={onClick} aria-label={label} title={label}>
       <Icon size={15} />
     </button>
   );
 }
 
-function buildWorkspaceThemeStyle(theme: WorkspaceTheme): CSSProperties {
+function ActionButton({ icon: Icon, label, onClick, danger = false }: { icon: LucideIcon; label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex h-9 items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] px-3 text-sm font-black hover:border-[var(--accent)]",
+        danger ? "text-[var(--danger)]" : "text-[var(--ink)]",
+      )}
+    >
+      <Icon size={16} />
+      {label}
+    </button>
+  );
+}
+
+function buildWorkspaceStyle(theme: WorkspaceTheme): CSSProperties {
   return {
     "--brand": theme.primary,
-    "--brand-dark": theme.primary,
-    "--brand-deep": theme.primary,
     "--accent": theme.accent,
-    "--blue": theme.primary,
-    "--green": theme.primary,
-    "--amber": theme.accent,
-    "--teal": theme.primary,
-    "--soft-red": theme.highlight,
-    "--agent": `color-mix(in srgb, ${theme.accent} 14%, var(--surface))`,
-    "--agent-line": `color-mix(in srgb, ${theme.accent} 34%, var(--line))`,
-    "--focus": `color-mix(in srgb, ${theme.accent} 22%, transparent)`,
-    "--hero-gradient": `linear-gradient(135deg, ${theme.primary} 0%, ${theme.accent} 100%)`,
+    "--brand-soft": theme.soft,
+    "--bubble-agent": `color-mix(in srgb, ${theme.accent} 14%, var(--surface))`,
   } as CSSProperties;
 }
 
@@ -2650,111 +1605,34 @@ function initials(name: string) {
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
-    .map((part) => part[0])
+    .map((item) => item[0])
     .join("")
     .toUpperCase();
 }
 
 function money(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: value % 1 === 0 ? 0 : 2,
-  }).format(value);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value || 0);
 }
 
-function relativeTime(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Sin fecha";
-  }
-
-  const minutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
-
-  if (minutes < 2) return "Ahora";
-  if (minutes < 60) return `${minutes} min`;
-
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h`;
-
-  return date.toLocaleDateString("es-EC", { day: "2-digit", month: "short" });
+function leadDates(lead: Lead) {
+  if (lead.desiredStartDate && lead.desiredEndDate) return `${lead.desiredStartDate} - ${lead.desiredEndDate}`;
+  if (lead.desiredStartDate) return lead.desiredStartDate;
+  if (lead.desiredEndDate) return lead.desiredEndDate;
+  return "Sin registrar";
 }
 
-function sourceLabel(source: Conversation["source"]) {
-  return sourceOptions.find((option) => option.value === source)?.label ?? source;
-}
-
-function stageLabel(stage: Conversation["stage"]) {
-  const labels: Record<Conversation["stage"], string> = {
-    new_lead: "Nuevo lead",
-    contacted: "Contactado",
-    follow_up: "Seguimiento",
-    appointment_scheduled: "Cita agendada",
-    won: "Ganado",
-    lost: "Perdido",
-  };
-
-  return labels[stage];
-}
-
-function leadStatusLabel(status: Customer["status"]) {
-  const labels: Record<Customer["status"], string> = {
-    new: "Nuevo",
-    contacted: "Contactado",
-    qualified: "Interesado",
-    proposal: "En seguimiento",
-    won: "Cerrado ganado",
-    lost: "Cerrado perdido",
-  };
-
-  return labels[status];
-}
-
-function taskState(dueDate?: string) {
-  if (!dueDate) return "Pendiente";
-  return new Date(dueDate).getTime() < Date.now() ? "Vencida" : "Pendiente";
-}
-
-function statusLabel(status: Workspace["metaStatus"]) {
-  const labels: Record<Workspace["metaStatus"], string> = {
+function statusText(status: Workspace["whatsappStatus"] | Workspace["metaStatus"] | Integration["status"]) {
+  return {
     connected: "Conectado",
-    pending: "Pendiente",
-    disconnected: "Desconectado",
-  };
-
-  return labels[status];
-}
-
-function integrationStatusLabel(status: IntegrationConnection["status"]) {
-  const labels: Record<IntegrationConnection["status"], string> = {
     ready: "Listo",
     partial: "Parcial",
     pending: "Pendiente",
-    error: "Error",
-  };
-
-  return labels[status];
+    disconnected: "Desconectado",
+  }[status];
 }
 
-function providerLabel(provider: IntegrationConnection["provider"]) {
-  const labels: Record<IntegrationConnection["provider"], string> = {
-    whatsapp_cloud_api: "WhatsApp Cloud API",
-    meta_lead_ads: "Meta Lead Ads",
-    instagram_graph: "Instagram Graph",
-    google_calendar: "Google Calendar",
-  };
-
-  return labels[provider];
-}
-
-function integrationQuality(status: IntegrationConnection["status"]) {
-  const values: Record<IntegrationConnection["status"], string> = {
-    ready: "100%",
-    partial: "72%",
-    pending: "8%",
-    error: "0%",
-  };
-
-  return values[status];
+function priorityClass(priority: Priority) {
+  if (priority === "hot") return "rounded-full bg-rose-100 px-2 py-1 text-[10px] font-black uppercase text-rose-700";
+  if (priority === "warm") return "rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase text-amber-700";
+  return "rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-600";
 }
