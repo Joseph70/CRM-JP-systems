@@ -35,7 +35,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import {
   applyLeadFormToConversation,
   buildConversationPayload,
@@ -71,6 +71,12 @@ type View =
 
 type ThemeMode = "light" | "dark";
 type PipelineStageConfig = { id: Conversation["stage"]; label: string; color: string };
+
+type WorkspaceTheme = {
+  primary: string;
+  accent: string;
+  highlight: string;
+};
 
 type Workspace = {
   id: string;
@@ -395,6 +401,12 @@ const defaultPipelineStageLabels = pipelineStages.reduce(
   {} as Record<Conversation["stage"], string>,
 );
 
+const defaultWorkspaceTheme: WorkspaceTheme = {
+  primary: "#8b102c",
+  accent: "#e11d48",
+  highlight: "#fff1f4",
+};
+
 const ownerOptions = ["Sin asignar", "Daniela", "Marco", "JP Admin", "Operador Comercial"];
 
 const quickReplyOptions = [
@@ -445,6 +457,9 @@ export default function Home() {
   const [taskForm, setTaskForm] = useState({ title: "", dueDate: "", notes: "" });
   const [pipelineStageLabels, setPipelineStageLabels] =
     useState<Record<Conversation["stage"], string>>(defaultPipelineStageLabels);
+  const [pipelineConfigWorkspace, setPipelineConfigWorkspace] = useState("");
+  const [workspaceTheme, setWorkspaceTheme] = useState<WorkspaceTheme>(defaultWorkspaceTheme);
+  const [themeConfigWorkspace, setThemeConfigWorkspace] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -459,21 +474,6 @@ export default function Home() {
       mode: themeMode,
     });
   }, [themeMode]);
-
-  useEffect(() => {
-    const savedLabels = window.localStorage.getItem("jp-crm-pipeline-labels");
-    if (!savedLabels) return;
-
-    try {
-      setPipelineStageLabels({ ...defaultPipelineStageLabels, ...JSON.parse(savedLabels) });
-    } catch {
-      setPipelineStageLabels(defaultPipelineStageLabels);
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("jp-crm-pipeline-labels", JSON.stringify(pipelineStageLabels));
-  }, [pipelineStageLabels]);
 
   useEffect(() => {
     let cancelled = false;
@@ -543,6 +543,11 @@ export default function Home() {
   useEffect(() => {
     if (!selectedWorkspaceId) return;
 
+    setSearchTerm("");
+    setStageFilter("all");
+    setSourceFilter("all");
+    setOwnerFilter("all");
+
     let cancelled = false;
 
     async function loadWorkspaceData() {
@@ -605,6 +610,42 @@ export default function Home() {
     if (!selectedWorkspaceId) return;
 
     try {
+      const savedLabels = window.localStorage.getItem(`jp-crm-pipeline-labels-${selectedWorkspaceId}`);
+      setPipelineStageLabels(savedLabels ? { ...defaultPipelineStageLabels, ...JSON.parse(savedLabels) } : defaultPipelineStageLabels);
+      setPipelineConfigWorkspace(selectedWorkspaceId);
+    } catch {
+      setPipelineStageLabels(defaultPipelineStageLabels);
+      setPipelineConfigWorkspace(selectedWorkspaceId);
+    }
+  }, [selectedWorkspaceId]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId || pipelineConfigWorkspace !== selectedWorkspaceId) return;
+    window.localStorage.setItem(`jp-crm-pipeline-labels-${selectedWorkspaceId}`, JSON.stringify(pipelineStageLabels));
+  }, [pipelineConfigWorkspace, pipelineStageLabels, selectedWorkspaceId]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId) return;
+
+    try {
+      const savedTheme = window.localStorage.getItem(`jp-crm-company-theme-${selectedWorkspaceId}`);
+      setWorkspaceTheme(savedTheme ? { ...defaultWorkspaceTheme, ...JSON.parse(savedTheme) } : defaultWorkspaceTheme);
+      setThemeConfigWorkspace(selectedWorkspaceId);
+    } catch {
+      setWorkspaceTheme(defaultWorkspaceTheme);
+      setThemeConfigWorkspace(selectedWorkspaceId);
+    }
+  }, [selectedWorkspaceId]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId || themeConfigWorkspace !== selectedWorkspaceId) return;
+    window.localStorage.setItem(`jp-crm-company-theme-${selectedWorkspaceId}`, JSON.stringify(workspaceTheme));
+  }, [selectedWorkspaceId, themeConfigWorkspace, workspaceTheme]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId) return;
+
+    try {
       const savedBot = window.localStorage.getItem(`jp-crm-bot-${selectedWorkspaceId}`);
       const savedFollowUps = window.localStorage.getItem(`jp-crm-followups-${selectedWorkspaceId}`);
       setBotConfig(savedBot ? { ...defaultBotConfig, ...JSON.parse(savedBot) } : defaultBotConfig);
@@ -645,6 +686,11 @@ export default function Home() {
       conversations[0],
     [conversations, selectedConversationId],
   );
+  const workspaceActivities = useMemo(() => {
+    const customerIds = new Set(customers.map((customer) => customer.id));
+    return activities.filter((activity) => customerIds.has(activity.customerId));
+  }, [activities, customers]);
+  const selectedWorkspaceStyle = useMemo(() => buildWorkspaceThemeStyle(workspaceTheme), [workspaceTheme]);
 
   const responseAverage = getResponseAverage(selectedWorkspace);
   const pipelineValue = getPipelineValue(conversations);
@@ -684,6 +730,15 @@ export default function Home() {
   function resetPipelineStages() {
     setPipelineStageLabels(defaultPipelineStageLabels);
     showToast("Etapas del pipeline restauradas.");
+  }
+
+  function updateWorkspaceTheme(partial: Partial<WorkspaceTheme>) {
+    setWorkspaceTheme((current) => ({ ...current, ...partial }));
+  }
+
+  function resetWorkspaceTheme() {
+    setWorkspaceTheme(defaultWorkspaceTheme);
+    showToast("Colores de empresa restaurados.");
   }
 
   function openNewLeadModal() {
@@ -957,7 +1012,7 @@ export default function Home() {
   }
 
   return (
-    <main className="appShell" data-theme={themeMode}>
+    <main className="appShell" data-theme={themeMode} style={selectedWorkspaceStyle}>
       <aside className="sidebar" aria-label="Navegacion principal">
         <div className="brandBlock">
           <img
@@ -1047,8 +1102,8 @@ export default function Home() {
         <section className="metricsRow" aria-label="Indicadores principales">
           <Metric label="Conversaciones" value={`${filteredConversations.length}`} detail="Leads visibles con filtros" />
           <Metric label="Respuesta media" value={responseAverage} detail={`Objetivo ${selectedWorkspace.responseSlaMinutes} min`} />
-          <Metric label="Leads activos" value={`${summary?.activeLeads ?? 0}`} detail="Base comercial general" />
-          <Metric label="Valor pipeline" value={money(pipelineValue || summary?.pipelineValue || 0)} detail="Oportunidades abiertas" />
+          <Metric label="Leads activos" value={`${conversations.length}`} detail="Base comercial del cliente" />
+          <Metric label="Valor pipeline" value={money(pipelineValue)} detail="Oportunidades del cliente" />
         </section>
 
         {activeView === "dashboard" && (
@@ -1056,7 +1111,7 @@ export default function Home() {
             campaigns={campaigns}
             conversations={filteredConversations}
             customers={customers}
-            activities={activities}
+            activities={workspaceActivities}
             summary={summary}
           />
         )}
@@ -1249,7 +1304,7 @@ export default function Home() {
         )}
         {activeView === "tasks" && (
           <TasksView
-            activities={activities}
+            activities={workspaceActivities}
             customers={customers}
             conversations={filteredConversations}
             onCreate={() => setTaskModalOpen(true)}
@@ -1278,8 +1333,11 @@ export default function Home() {
             workspace={selectedWorkspace}
             integrations={integrations}
             pipelineStages={activePipelineStages}
+            workspaceTheme={workspaceTheme}
             themeMode={themeMode}
             onThemeChange={chooseTheme}
+            onWorkspaceThemeChange={updateWorkspaceTheme}
+            onResetWorkspaceTheme={resetWorkspaceTheme}
             onEdit={showDevelopmentToast}
           />
         )}
@@ -1789,8 +1847,8 @@ function DashboardView({
         <div className="settingsList">
           <SummaryItem label="Empresas" value={`${summary?.totalWorkspaces ?? 0}`} />
           <SummaryItem label="Contactos CRM" value={`${customers.length}`} />
-          <SummaryItem label="Conversaciones" value={`${summary?.totalConversations ?? conversations.length}`} />
-          <SummaryItem label="Pipeline general" value={money(summary?.pipelineValue ?? 0)} />
+          <SummaryItem label="Conversaciones" value={`${conversations.length}`} />
+          <SummaryItem label="Pipeline cliente" value={money(getPipelineValue(conversations))} />
         </div>
       </aside>
     </section>
@@ -2398,15 +2456,21 @@ function SettingsView({
   workspace,
   integrations,
   pipelineStages,
+  workspaceTheme,
   themeMode,
   onThemeChange,
+  onWorkspaceThemeChange,
+  onResetWorkspaceTheme,
   onEdit,
 }: {
   workspace: Workspace;
   integrations: IntegrationConnection[];
   pipelineStages: PipelineStageConfig[];
+  workspaceTheme: WorkspaceTheme;
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
+  onWorkspaceThemeChange: (theme: Partial<WorkspaceTheme>) => void;
+  onResetWorkspaceTheme: () => void;
   onEdit: () => void;
 }) {
   return (
@@ -2432,8 +2496,8 @@ function SettingsView({
         </div>
         <div className="preferenceBlock">
           <div>
-            <strong>Apariencia del CRM</strong>
-            <span>Elige el modo visual para esta estacion de trabajo.</span>
+            <strong>Modo visual</strong>
+            <span>Este modo es de tu estacion; los colores son de la empresa.</span>
           </div>
           <ThemeSwitch themeMode={themeMode} onThemeChange={onThemeChange} />
         </div>
@@ -2460,6 +2524,58 @@ function SettingsView({
           {pipelineStages.map((stage) => (
             <span className="statusPill" key={stage.id}>{stage.label}</span>
           ))}
+        </div>
+      </article>
+
+      <article className="widePanel">
+        <div className="panelHeading">
+          <div>
+            <p className="eyebrow">Perfil visual</p>
+            <h2>Colores de {workspace.name}</h2>
+          </div>
+          <button className="secondaryButton" onClick={onResetWorkspaceTheme}>
+            <Sparkles size={18} />
+            Restaurar
+          </button>
+        </div>
+        <div className="themePalette">
+          <label>
+            Principal
+            <input
+              type="color"
+              value={workspaceTheme.primary}
+              onChange={(event) => onWorkspaceThemeChange({ primary: event.target.value })}
+            />
+            <span>{workspaceTheme.primary}</span>
+          </label>
+          <label>
+            Acento
+            <input
+              type="color"
+              value={workspaceTheme.accent}
+              onChange={(event) => onWorkspaceThemeChange({ accent: event.target.value })}
+            />
+            <span>{workspaceTheme.accent}</span>
+          </label>
+          <label>
+            Fondo suave
+            <input
+              type="color"
+              value={workspaceTheme.highlight}
+              onChange={(event) => onWorkspaceThemeChange({ highlight: event.target.value })}
+            />
+            <span>{workspaceTheme.highlight}</span>
+          </label>
+        </div>
+        <div className="brandPreview">
+          <div>
+            <span>Vista previa</span>
+            <strong>{workspace.name}</strong>
+          </div>
+          <button className="primaryButton">
+            <MessageCircle size={16} />
+            WhatsApp
+          </button>
         </div>
       </article>
 
@@ -2509,6 +2625,24 @@ function ThemeSwitch({
       <Icon size={15} />
     </button>
   );
+}
+
+function buildWorkspaceThemeStyle(theme: WorkspaceTheme): CSSProperties {
+  return {
+    "--brand": theme.primary,
+    "--brand-dark": theme.primary,
+    "--brand-deep": theme.primary,
+    "--accent": theme.accent,
+    "--blue": theme.primary,
+    "--green": theme.primary,
+    "--amber": theme.accent,
+    "--teal": theme.primary,
+    "--soft-red": theme.highlight,
+    "--agent": `color-mix(in srgb, ${theme.accent} 14%, var(--surface))`,
+    "--agent-line": `color-mix(in srgb, ${theme.accent} 34%, var(--line))`,
+    "--focus": `color-mix(in srgb, ${theme.accent} 22%, transparent)`,
+    "--hero-gradient": `linear-gradient(135deg, ${theme.primary} 0%, ${theme.accent} 100%)`,
+  } as CSSProperties;
 }
 
 function initials(name: string) {
