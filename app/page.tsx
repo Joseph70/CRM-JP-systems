@@ -2,6 +2,7 @@
 
 import {
   Building2,
+  Bot,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -19,6 +20,7 @@ import {
   Moon,
   PhoneCall,
   PlugZap,
+  Plus,
   Search,
   Send,
   Settings,
@@ -147,6 +149,25 @@ type AutomationRule = {
   name: string;
   trigger: string;
   action: string;
+  active: boolean;
+};
+
+type BotConfig = {
+  enabled: boolean;
+  mode: "asistente" | "ventas" | "calificacion";
+  objective: string;
+  welcomeMessage: string;
+  qualificationQuestions: string[];
+  handoffKeywords: string;
+  templateName: string;
+};
+
+type FollowUpRule = {
+  id: string;
+  name: string;
+  delayHours: number;
+  stage: Conversation["stage"] | "any";
+  message: string;
   active: boolean;
 };
 
@@ -298,6 +319,33 @@ const demoAutomations: AutomationRule[] = [
   { id: "auto_demo_001", name: "Bienvenida WhatsApp", trigger: "Nuevo lead", action: "Enviar mensaje inicial", active: true },
   { id: "auto_demo_002", name: "Recordatorio seguimiento", trigger: "24h sin respuesta", action: "Crear tarea", active: true },
 ];
+const defaultBotConfig: BotConfig = {
+  enabled: true,
+  mode: "ventas",
+  objective: "Calificar el lead, resolver dudas iniciales y pasar a humano cuando pida precio final o cita.",
+  welcomeMessage: "Hola, gracias por escribirnos. Soy el asistente de JP Sistems. Te ayudo a cotizar y agendar rapido.",
+  qualificationQuestions: ["Que servicio necesitas?", "Para cuando lo necesitas?", "En que ciudad estas?"],
+  handoffKeywords: "humano, asesor, cita, precio final, reclamo",
+  templateName: "bienvenida_lead",
+};
+const defaultFollowUpRules: FollowUpRule[] = [
+  {
+    id: "follow_demo_001",
+    name: "Reactivar lead caliente",
+    delayHours: 4,
+    stage: "contacted",
+    message: "Hola, sigo atento por aqui. Te gustaria que te envie disponibilidad o precios?",
+    active: true,
+  },
+  {
+    id: "follow_demo_002",
+    name: "Confirmar cita",
+    delayHours: 20,
+    stage: "appointment_scheduled",
+    message: "Te confirmo tu cita. Si necesitas cambiar la hora, respondeme por este chat.",
+    active: true,
+  },
+];
 const demoIntegrations: IntegrationConnection[] = [
   { id: "int_demo_001", provider: "whatsapp_cloud_api", status: "partial", capabilities: ["mensajes", "plantillas"] },
   { id: "int_demo_002", provider: "meta_lead_ads", status: "partial", capabilities: ["campanas", "formularios"] },
@@ -374,6 +422,9 @@ export default function Home() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignSource[]>([]);
   const [automations, setAutomations] = useState<AutomationRule[]>([]);
+  const [botConfig, setBotConfig] = useState<BotConfig>(defaultBotConfig);
+  const [followUpRules, setFollowUpRules] = useState<FollowUpRule[]>(defaultFollowUpRules);
+  const [automationConfigWorkspace, setAutomationConfigWorkspace] = useState("");
   const [integrations, setIntegrations] = useState<IntegrationConnection[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState("");
@@ -549,6 +600,32 @@ export default function Home() {
       cancelled = true;
     };
   }, [selectedWorkspaceId]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId) return;
+
+    try {
+      const savedBot = window.localStorage.getItem(`jp-crm-bot-${selectedWorkspaceId}`);
+      const savedFollowUps = window.localStorage.getItem(`jp-crm-followups-${selectedWorkspaceId}`);
+      setBotConfig(savedBot ? { ...defaultBotConfig, ...JSON.parse(savedBot) } : defaultBotConfig);
+      setFollowUpRules(savedFollowUps ? JSON.parse(savedFollowUps) : defaultFollowUpRules);
+      setAutomationConfigWorkspace(selectedWorkspaceId);
+    } catch {
+      setBotConfig(defaultBotConfig);
+      setFollowUpRules(defaultFollowUpRules);
+      setAutomationConfigWorkspace(selectedWorkspaceId);
+    }
+  }, [selectedWorkspaceId]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId || automationConfigWorkspace !== selectedWorkspaceId) return;
+    window.localStorage.setItem(`jp-crm-bot-${selectedWorkspaceId}`, JSON.stringify(botConfig));
+  }, [automationConfigWorkspace, botConfig, selectedWorkspaceId]);
+
+  useEffect(() => {
+    if (!selectedWorkspaceId || automationConfigWorkspace !== selectedWorkspaceId) return;
+    window.localStorage.setItem(`jp-crm-followups-${selectedWorkspaceId}`, JSON.stringify(followUpRules));
+  }, [automationConfigWorkspace, followUpRules, selectedWorkspaceId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -883,7 +960,11 @@ export default function Home() {
     <main className="appShell" data-theme={themeMode}>
       <aside className="sidebar" aria-label="Navegacion principal">
         <div className="brandBlock">
-          <div className="brandMark">JP</div>
+          <img
+            className="brandMark"
+            src={themeMode === "dark" ? "/brand/jp-logo-dark.png" : "/brand/jp-logo-light.png"}
+            alt="JP Sistems"
+          />
           <div>
             <strong>JP Sistems CRM</strong>
             <span>WhatsApp + Meta</span>
@@ -1180,7 +1261,17 @@ export default function Home() {
           />
         )}
         {activeView === "campaigns" && <CampaignsView sources={campaigns} onOpenSource={(source) => setSourceFilter(source.channel)} />}
-        {activeView === "automations" && <AutomationsView automations={automations} onToggle={toggleAutomation} />}
+        {activeView === "automations" && (
+          <AutomationsView
+            automations={automations}
+            botConfig={botConfig}
+            followUpRules={followUpRules}
+            pipelineStages={activePipelineStages}
+            onToggle={toggleAutomation}
+            onBotConfigChange={setBotConfig}
+            onFollowUpRulesChange={setFollowUpRules}
+          />
+        )}
         {activeView === "integrations" && <IntegrationsView integrations={integrations} onConnect={showDevelopmentToast} />}
         {activeView === "settings" && (
           <SettingsView
@@ -2097,19 +2188,156 @@ function CampaignsView({
 
 function AutomationsView({
   automations,
+  botConfig,
+  followUpRules,
+  pipelineStages,
   onToggle,
+  onBotConfigChange,
+  onFollowUpRulesChange,
 }: {
   automations: AutomationRule[];
+  botConfig: BotConfig;
+  followUpRules: FollowUpRule[];
+  pipelineStages: PipelineStageConfig[];
   onToggle: (automation: AutomationRule) => void;
+  onBotConfigChange: (config: BotConfig) => void;
+  onFollowUpRulesChange: (rules: FollowUpRule[]) => void;
 }) {
+  const updateBotConfig = (partial: Partial<BotConfig>) => {
+    onBotConfigChange({ ...botConfig, ...partial });
+  };
+  const updateQuestion = (index: number, value: string) => {
+    const nextQuestions = [...botConfig.qualificationQuestions];
+    nextQuestions[index] = value;
+    updateBotConfig({ qualificationQuestions: nextQuestions });
+  };
+  const updateFollowUpRule = (id: string, partial: Partial<FollowUpRule>) => {
+    onFollowUpRulesChange(followUpRules.map((rule) => (rule.id === id ? { ...rule, ...partial } : rule)));
+  };
+  const addFollowUpRule = () => {
+    onFollowUpRulesChange([
+      ...followUpRules,
+      {
+        id: `follow_${Date.now()}`,
+        name: "Nuevo seguimiento",
+        delayHours: 24,
+        stage: "any",
+        message: "Hola, paso por aqui para dar seguimiento. Quieres que avancemos?",
+        active: true,
+      },
+    ]);
+  };
+  const removeFollowUpRule = (id: string) => {
+    onFollowUpRulesChange(followUpRules.filter((rule) => rule.id !== id));
+  };
+
   return (
     <section className="widePanel">
-      <PanelHeading eyebrow="Reglas" title="Automatizaciones comerciales" />
+      <PanelHeading eyebrow="WhatsApp CRM" title="Bot y seguimientos" />
+      <div className="automationWorkbench">
+        <article className="botCard">
+          <div className="sectionHeaderCompact">
+            <div>
+              <strong>Salesbot automatico</strong>
+              <span>Responde, califica y pasa a humano.</span>
+            </div>
+            <label className="toggleLine">
+              <input
+                type="checkbox"
+                checked={botConfig.enabled}
+                onChange={(event) => updateBotConfig({ enabled: event.target.checked })}
+              />
+              {botConfig.enabled ? "Activo" : "Pausado"}
+            </label>
+          </div>
+          <div className="botForm">
+            <label>
+              Modo
+              <select value={botConfig.mode} onChange={(event) => updateBotConfig({ mode: event.target.value as BotConfig["mode"] })}>
+                <option value="asistente">Asistente</option>
+                <option value="ventas">Ventas</option>
+                <option value="calificacion">Calificacion</option>
+              </select>
+            </label>
+            <label>
+              Plantilla aprobada
+              <input value={botConfig.templateName} onChange={(event) => updateBotConfig({ templateName: event.target.value })} />
+            </label>
+            <label className="wideField">
+              Objetivo
+              <textarea value={botConfig.objective} onChange={(event) => updateBotConfig({ objective: event.target.value })} rows={2} />
+            </label>
+            <label className="wideField">
+              Mensaje inicial
+              <textarea
+                value={botConfig.welcomeMessage}
+                onChange={(event) => updateBotConfig({ welcomeMessage: event.target.value })}
+                rows={2}
+              />
+            </label>
+            <label className="wideField">
+              Palabras para pasar a humano
+              <input value={botConfig.handoffKeywords} onChange={(event) => updateBotConfig({ handoffKeywords: event.target.value })} />
+            </label>
+          </div>
+          <div className="questionList">
+            <strong>Preguntas de calificacion</strong>
+            {botConfig.qualificationQuestions.map((question, index) => (
+              <input key={`${index}-${question}`} value={question} onChange={(event) => updateQuestion(index, event.target.value)} />
+            ))}
+          </div>
+        </article>
+
+        <article className="followupCard">
+          <div className="sectionHeaderCompact">
+            <div>
+              <strong>Seguimientos automaticos</strong>
+              <span>Mensajes por etapa y tiempo sin respuesta.</span>
+            </div>
+            <button className="miniButton" onClick={addFollowUpRule}>
+              <Plus size={14} />
+              Agregar
+            </button>
+          </div>
+          <div className="followupStack">
+            {followUpRules.map((rule) => (
+              <div className="followupRule" key={rule.id}>
+                <label className="toggleLine">
+                  <input
+                    type="checkbox"
+                    checked={rule.active}
+                    onChange={(event) => updateFollowUpRule(rule.id, { active: event.target.checked })}
+                  />
+                </label>
+                <input value={rule.name} onChange={(event) => updateFollowUpRule(rule.id, { name: event.target.value })} />
+                <input
+                  type="number"
+                  min="1"
+                  value={rule.delayHours}
+                  onChange={(event) => updateFollowUpRule(rule.id, { delayHours: Number(event.target.value) || 1 })}
+                />
+                <select value={rule.stage} onChange={(event) => updateFollowUpRule(rule.id, { stage: event.target.value as FollowUpRule["stage"] })}>
+                  <option value="any">Cualquier etapa</option>
+                  {pipelineStages.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.label}
+                    </option>
+                  ))}
+                </select>
+                <button className="iconButton dangerButton" onClick={() => removeFollowUpRule(rule.id)} aria-label="Eliminar seguimiento">
+                  <Trash2 size={14} />
+                </button>
+                <textarea value={rule.message} onChange={(event) => updateFollowUpRule(rule.id, { message: event.target.value })} rows={2} />
+              </div>
+            ))}
+          </div>
+        </article>
+      </div>
       <div className="automationGrid">
         {automations.map((automation) => (
           <article className="automationCard" key={automation.id}>
             <div className="automationIcon">
-              <Sparkles size={18} />
+              <Bot size={18} />
             </div>
             <div>
               <div className="rowBetween">
@@ -2267,25 +2495,19 @@ function ThemeSwitch({
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
 }) {
+  const nextMode = themeMode === "dark" ? "light" : "dark";
+  const Icon = themeMode === "dark" ? Sun : Moon;
+
   return (
-    <div className="themeSwitch" role="group" aria-label="Modo de color del CRM">
-      <button
-        className={themeMode === "light" ? "active" : ""}
-        type="button"
-        onClick={() => onThemeChange("light")}
-      >
-        <Sun size={15} />
-        Claro
-      </button>
-      <button
-        className={themeMode === "dark" ? "active" : ""}
-        type="button"
-        onClick={() => onThemeChange("dark")}
-      >
-        <Moon size={15} />
-        Oscuro
-      </button>
-    </div>
+    <button
+      className="themeToggle"
+      type="button"
+      onClick={() => onThemeChange(nextMode)}
+      aria-label={`Cambiar a modo ${nextMode === "dark" ? "oscuro" : "claro"}`}
+      title={`Modo ${themeMode === "dark" ? "oscuro" : "claro"}`}
+    >
+      <Icon size={15} />
+    </button>
   );
 }
 
